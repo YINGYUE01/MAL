@@ -1,0 +1,34 @@
+# ---- Unreal Engine 生成目录 ----
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+.vs/
+.idea/
+.vscode/
+
+# ---- 编译产物 ----
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.sdf
+*.suo
+*.xcodeproj
+*.xcworkspace
+
+# ---- 本地用户配置 ----
+*.DotSettings.user
+Config/*User*.ini
+
+# ---- 系统文件 ----
+Thumbs.db
+.DS_Store
+
+# ---- 第三方商城资产（体积过大，不入仓库；克隆后需自行重新导入）----
+Content/ParagonKwang/
+Content/SwordTrailVFX/
+
+# ---- 其他 ----
+__pycache__/
+*.pyc
