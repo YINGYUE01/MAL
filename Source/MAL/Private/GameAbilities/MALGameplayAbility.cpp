@@ -1,6 +1,9 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "GameAbilities/MALGameplayAbility.h"
+#include "Components/MALAbilitySystemComponent.h"
+#include "Engine/CurveTable.h"
+#include "Curves/RealCurve.h"
 
 UMALGameplayAbility::UMALGameplayAbility()
 {
@@ -9,32 +12,56 @@ UMALGameplayAbility::UMALGameplayAbility()
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 }
 
+float UMALGameplayAbility::GetLevelScaledValue(FName RowName, float DefaultValue) const
+{
+	if (LevelScalingTable && !RowName.IsNone())
+	{
+		if (const FRealCurve* Curve = LevelScalingTable->FindCurve(
+			RowName, TEXT("UMALGameplayAbility::GetLevelScaledValue"), false))
+		{
+			return Curve->Eval(static_cast<float>(GetAbilityLevel()));
+		}
+	}
+
+	return DefaultValue;
+}
+
 void UMALGameplayAbility::OnInputPressed(const FInputActionValue& Value)
 {
-	OnAbilityInputPressed.Broadcast(FVector(Value.Get<FVector2D>(), 0.0f));
-	// Override in subclasses
+	// FInputActionValue::Get<FVector>() works for Bool/Axis1D/Axis2D/Axis3D and preserves
+	// the axes that are available, so Blueprint can inspect the real input value.
+	OnAbilityInputPressed.Broadcast(Value.Get<FVector>());
 }
 
 void UMALGameplayAbility::OnInputReleased(const FInputActionValue& Value)
 {
-	OnAbilityInputReleased.Broadcast(FVector(Value.Get<FVector2D>(), 0.0f));
-	// Override in subclasses
+	OnAbilityInputReleased.Broadcast(Value.Get<FVector>());
 }
 
 void UMALGameplayAbility::InputPressed(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo)
 {
-	// Forward to the custom interface for subclass convenience
-	FInputActionValue DummyValue;
-	OnInputPressed(DummyValue);
+	FInputActionValue Value;
+	if (const UMALAbilitySystemComponent* MALASC =
+		Cast<UMALAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+	{
+		Value = MALASC->GetLastInputValue(InputActivatedTag);
+	}
+
+	OnInputPressed(Value);
 }
 
 void UMALGameplayAbility::InputReleased(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo)
 {
-	// Forward to the custom interface for subclass convenience
-	FInputActionValue DummyValue;
-	OnInputReleased(DummyValue);
+	FInputActionValue Value;
+	if (const UMALAbilitySystemComponent* MALASC =
+		Cast<UMALAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+	{
+		Value = MALASC->GetLastInputValue(InputActivatedTag);
+	}
+
+	OnInputReleased(Value);
 }

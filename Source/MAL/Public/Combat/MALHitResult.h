@@ -30,5 +30,5 @@ struct FMALHitResult
 
 	/** World-space hit location (weapon bone position at overlap) */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Combat")
-	FVector HitLocation;
+	FVector HitLocation = FVector::ZeroVector;
 };

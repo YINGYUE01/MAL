@@ -51,17 +51,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Level")
 	int32 MaxLevel = 1;
 
-	/** Curve table for level scaling (damage, cooldown, etc.) */
+	/** Curve table for level scaling (damage, cooldown, etc.). Row names are looked up by GetLevelScaledValue. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Level")
 	TObjectPtr<UCurveTable> LevelScalingTable;
 
-	/** Cooldown gameplay effect class */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Cooldown")
-	TSubclassOf<UGameplayEffect> CooldownGE;
-
-	/** Cost gameplay effect class (placeholder, not yet used) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Cost")
-	TSubclassOf<UGameplayEffect> CostGE;
+	/**
+	 * Evaluate a row from LevelScalingTable at the ability's current level.
+	 * Returns DefaultValue when the table/row is missing.
+	 */
+	UFUNCTION(BlueprintPure, Category = "MAL|Ability|Level")
+	float GetLevelScaledValue(FName RowName, float DefaultValue = 0.0f) const;
 
 	// --- Input forwarding interface ---
 

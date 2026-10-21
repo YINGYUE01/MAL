@@ -4,6 +4,7 @@
 
 #include "Interfaces/MALComboAttackInterface.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "GameFramework/Pawn.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(MALAnimNotify_WeaponCollision)
 
@@ -14,6 +15,22 @@ void UMALAnimNotify_WeaponCollision::Notify(USkeletalMeshComponent* MeshComp, UA
 	if (!MeshComp)
 	{
 		return;
+	}
+
+	AActor* Owner = MeshComp->GetOwner();
+	if (!Owner)
+	{
+		return;
+	}
+
+	// Simulated proxies have no active ability instance driving the montage; the ability
+	// only runs on the server and the owning client. Skipping here avoids warning spam.
+	if (const APawn* Pawn = Cast<APawn>(Owner))
+	{
+		if (!Pawn->IsLocallyControlled() && Pawn->GetLocalRole() != ROLE_Authority)
+		{
+			return;
+		}
 	}
 
 	IMALComboAttackInterface* ComboAbility = IMALComboAttackInterface::GetFromMesh(MeshComp);

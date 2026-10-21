@@ -11,6 +11,7 @@
 
 class UAnimMontage;
 class UPrimitiveComponent;
+class UAbilityTask_ApplyRootMotionMoveToForce;
 
 /**
  * UMALAbility_Attack
@@ -49,11 +50,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Combo")
 	TArray<FName> ComboSections;
 
-	/** Section played after the last combo hit when no further input arrives (recovery). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Combo")
-	FName RecoverySection = TEXT("Recovery");
+	/** How long (seconds) an early combo press stays buffered before it is discarded. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Combo", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ComboInputBufferWindow = 0.25f;
 
-	/** Forward lunge distance per hit (fixed distance along actor forward) */
+	/** Forward lunge distance per hit (fixed distance along the lunge direction) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Lunge")
 	float LungeDistance = 150.0f;
 
@@ -72,6 +73,9 @@ protected:
 	/** True if attack was pressed before the window opened; consumed when it opens */
 	bool bComboInputBuffered = false;
 
+	/** World time of the buffered press, used to expire stale inputs. */
+	double ComboInputBufferTime = 0.0;
+
 	// --- Combo input handling ---
 
 	/** Input hook: attack pressed while this ability is already active */
@@ -83,11 +87,14 @@ protected:
 	/** Jump to the next combo section (if any remain) */
 	void AdvanceCombo();
 
-	/** Consume buffered input when a combo window opens */
+	/** Consume buffered input when a combo window opens (only if still fresh) */
 	void TryConsumeBufferedInput();
 
 	/** Reset combo counters/flags (on activate and end) */
 	void ResetComboState();
+
+	/** Current step derived from the montage's active section (authoritative on both sides). */
+	int32 GetCurrentComboStepFromMontage() const;
 
 	// --- Lunge ---
 
@@ -98,18 +105,29 @@ protected:
 	UFUNCTION()
 	void OnLungeFinished();
 
+	/** The currently running lunge task; ended before a new lunge starts. */
+	UPROPERTY()
+	TObjectPtr<UAbilityTask_ApplyRootMotionMoveToForce> ActiveLungeTask;
+
 	// --- Weapon collision ---
 
 	/** The weapon collision component (cached during EnableWeaponCollision) */
 	TObjectPtr<UPrimitiveComponent> WeaponCollisionComp;
 
-	/** Damage effect class to apply on weapon hit (create as BP asset later) */
+	/** Actors already hit during the current collision window (prevents multi-hit per swing). */
+	TSet<AActor*> HitActorsThisSwing;
+
+	/** Damage effect class to apply on weapon hit; null falls back to UMALDamageGameplayEffect. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Damage")
 	TSubclassOf<class UGameplayEffect> DamageGEClass;
 
 	/** Base damage magnitude applied to the damage GE */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Damage")
 	float BaseDamage = 10.0f;
+
+	/** Extra damage multiplier per combo step (0.15 => 15% per step). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Damage")
+	float ComboDamageBonusPerStep = 0.15f;
 
 	/** Name of the weapon collision component to find on the character */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Damage")

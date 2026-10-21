@@ -28,6 +28,10 @@ void AMALPlayerController::BeginPlay()
 		{
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
 		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("AMALPlayerController: DefaultMappingContext is not set. No input will be received."));
+		}
 	}
 }
 
@@ -42,7 +46,17 @@ void AMALPlayerController::SetupInputComponent()
 		{
 			MALInput->BindInputConfig(InputConfig);
 		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("AMALPlayerController: InputConfig is not set. Ability input will not work."));
+		}
+
 		MALInput->OnInputActionEvent.AddDynamic(TObjectPtr<AMALPlayerController>(this), &AMALPlayerController::HandleInputActionEvent);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("AMALPlayerController: InputComponent is not a UMALInputComponent. Check DefaultInputComponentClass in DefaultInput.ini. Ability input will not work."));
 	}
 }
 
@@ -117,11 +131,11 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 		{
 			if (EventType == ETriggerEvent::Started)
 			{
-				MALASC->AbilityInputTagPressed(InputTag);
+				MALASC->AbilityInputTagPressed(InputTag, Value);
 			}
 			else if (EventType == ETriggerEvent::Completed)
 			{
-				MALASC->AbilityInputTagReleased(InputTag);
+				MALASC->AbilityInputTagReleased(InputTag, Value);
 			}
 		}
 	}

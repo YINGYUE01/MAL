@@ -4,7 +4,6 @@
 #include "GameAbilities/MALGameplayAbility.h"
 #include "Data/MALAbilitySet.h"
 #include "GameplayTagContainer.h"
-#include "AbilitySystem/Attributes/MALAttributeSet.h"
 
 UMALAbilitySystemComponent::UMALAbilitySystemComponent()
 {
@@ -14,16 +13,25 @@ void UMALAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AAct
 {
 	Super::InitAbilityActorInfo(InOwnerActor, InAvatarActor);
 
-	// Initialize attribute sets so GE modifiers can reference them
-	InitStats(UMALAttributeSet::StaticClass(), nullptr);
+	UE_LOG(LogTemp, Verbose, TEXT("MALASC::InitAbilityActorInfo owner=%s avatar=%s spawnedAttributes=%d"),
+		*GetNameSafe(InOwnerActor), *GetNameSafe(InAvatarActor), GetSpawnedAttributes().Num());
+
+	// NOTE: Do NOT call InitStats here. The AttributeSet is a default subobject of the
+	// owner and UAbilitySystemComponent::InitializeComponent discovers it automatically.
+	// Calling InitStats at this point would create a *second* AttributeSet because this
+	// virtual is invoked before the owner's subobjects are scanned.
 }
 
-void UMALAbilitySystemComponent::GrantAbilitySet(const UMALAbilitySet* AbilitySet)
+TArray<FGameplayAbilitySpecHandle> UMALAbilitySystemComponent::GrantAbilitySet(const UMALAbilitySet* AbilitySet)
 {
-	if (!AbilitySet)
+	TArray<FGameplayAbilitySpecHandle> GrantedHandles;
+
+	if (!AbilitySet || !IsOwnerActorAuthoritative())
 	{
-		return;
+		return GrantedHandles;
 	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("MALASC::GrantAbilitySet %s -> %s"), *GetName(), *GetNameSafe(AbilitySet));
 
 	for (const FMALAbilitySetEntry& Entry : AbilitySet->Abilities)
 	{
@@ -33,39 +41,59 @@ void UMALAbilitySystemComponent::GrantAbilitySet(const UMALAbilitySet* AbilitySe
 		}
 
 		FGameplayAbilitySpec AbilitySpec(Entry.AbilityClass, Entry.StartingLevel);
-		FGameplayAbilitySpecHandle Handle = GiveAbility(AbilitySpec);
 
-		if (Handle.IsValid())
+		// Resolve the input tag BEFORE GiveAbility so the tag is part of the spec's
+		// initial replication payload (DynamicAbilityTags are replicated with the spec).
+		FGameplayTag InputTag = Entry.OverrideInputTag;
+		if (!InputTag.IsValid())
 		{
-			// Determine the InputTag: use override if set, otherwise read from CDO
-			FGameplayTag InputTag = Entry.OverrideInputTag;
-			if (!InputTag.IsValid())
+			if (const UMALGameplayAbility* MALAbility =
+				Cast<UMALGameplayAbility>(Entry.AbilityClass->GetDefaultObject()))
 			{
-				FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
-				if (Spec && Spec->Ability)
-				{
-					if (const UMALGameplayAbility* MALAbility = Cast<UMALGameplayAbility>(Spec->Ability))
-					{
-						InputTag = MALAbility->InputActivatedTag;
-					}
-				}
-			}
-
-			// Store InputTag in DynamicAbilityTags for tag-based lookup
-			if (InputTag.IsValid())
-			{
-				FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
-				if (Spec)
-				{
-					Spec->DynamicAbilityTags.AddTag(InputTag);
-				}
+				InputTag = MALAbility->InputActivatedTag;
 			}
 		}
+
+		if (InputTag.IsValid())
+		{
+			AbilitySpec.GetDynamicSpecSourceTags().AddTag(InputTag);
+		}
+
+		const FGameplayAbilitySpecHandle Handle = GiveAbility(AbilitySpec);
+		if (Handle.IsValid())
+		{
+			GrantedHandles.Add(Handle);
+			GrantedAbilityHandles.Add(Handle);
+		}
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("MALASC::GrantAbilitySet %s: granted %d abilities"), *GetName(), GrantedHandles.Num());
+
+	return GrantedHandles;
+}
+
+void UMALAbilitySystemComponent::ClearGrantedAbilities()
+{
+	if (!IsOwnerActorAuthoritative())
+	{
+		return;
+	}
+
+	for (const FGameplayAbilitySpecHandle& Handle : GrantedAbilityHandles)
+	{
+		ClearAbility(Handle);
+	}
+
+	GrantedAbilityHandles.Empty();
 }
 
 bool UMALAbilitySystemComponent::UpgradeAbilityByInputTag(const FGameplayTag& InputTag)
 {
+	if (!IsOwnerActorAuthoritative())
+	{
+		return false;
+	}
+
 	FGameplayAbilitySpec* Spec = FindAbilitySpecByInputTag(InputTag);
 	if (!Spec)
 	{
@@ -89,40 +117,59 @@ bool UMALAbilitySystemComponent::UpgradeAbilityByInputTag(const FGameplayTag& In
 	return true;
 }
 
-void UMALAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& InputTag)
+void UMALAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& InputTag, const FInputActionValue& Value)
 {
 	if (!InputTag.IsValid())
 	{
 		return;
 	}
 
+	LastInputValues.Add(InputTag, Value);
+
 	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
-		if (Spec.DynamicAbilityTags.HasTagExact(InputTag))
+		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
 		{
 			InputPressedSpecHandles.AddUnique(Spec.Handle);
 		}
 	}
 }
 
-void UMALAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag& InputTag)
+void UMALAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag& InputTag, const FInputActionValue& Value)
 {
 	if (!InputTag.IsValid())
 	{
 		return;
 	}
 
+	LastInputValues.Add(InputTag, Value);
+
 	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
-		if (Spec.DynamicAbilityTags.HasTagExact(InputTag))
+		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
 		{
 			InputReleasedSpecHandles.AddUnique(Spec.Handle);
 		}
 	}
 }
 
+FInputActionValue UMALAbilitySystemComponent::GetLastInputValue(const FGameplayTag& InputTag) const
+{
+	if (const FInputActionValue* Found = LastInputValues.Find(InputTag))
+	{
+		return *Found;
+	}
+
+	return FInputActionValue();
+}
+
 void UMALAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGamePaused)
 {
+	if (bGamePaused)
+	{
+		return;
+	}
+
 	// 1. Process pressed inputs
 	for (const FGameplayAbilitySpecHandle& Handle : InputPressedSpecHandles)
 	{
@@ -136,7 +183,7 @@ void UMALAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGame
 
 		if (Spec->IsActive())
 		{
-			// Ability already active, forward press event (wakes WaitInputPress)
+			// Ability already active, forward press event (wakes WaitInputPress / combo chaining)
 			AbilitySpecInputPressed(*Spec);
 		}
 		else
@@ -203,36 +250,56 @@ void UMALAbilitySystemComponent::ClearAbilityInput()
 	InputPressedSpecHandles.Empty();
 	InputReleasedSpecHandles.Empty();
 	InputHeldSpecHandles.Empty();
+	LastInputValues.Empty();
 }
 
 void UMALAbilitySystemComponent::AbilitySpecInputPressed(FGameplayAbilitySpec& Spec)
 {
+	// Replicate the press to the server for abilities that opt in. The engine's native
+	// AbilityLocalInputPressed does this too, but MAL feeds input through ProcessAbilityInput
+	// and therefore has to mirror the behaviour here.
+	if (Spec.Ability && Spec.Ability->bReplicateInputDirectly && !IsOwnerActorAuthoritative())
+	{
+		ServerSetInputPressed(Spec.Handle);
+	}
+
 	Super::AbilitySpecInputPressed(Spec);
 
 	if (Spec.IsActive())
 	{
+		FPredictionKey PredictionKey;
+		if (UGameplayAbility* Instance = Spec.GetPrimaryInstance())
+		{
+			PredictionKey = Instance->GetCurrentActivationInfoRef().GetActivationPredictionKey();
+		}
+
 		InvokeReplicatedEvent(EAbilityGenericReplicatedEvent::InputPressed,
 			Spec.Handle,
-			Spec.ActivationInfo.GetActivationPredictionKey());
+			PredictionKey);
 	}
 }
 
 void UMALAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& Spec)
 {
+	if (Spec.Ability && Spec.Ability->bReplicateInputDirectly && !IsOwnerActorAuthoritative())
+	{
+		ServerSetInputReleased(Spec.Handle);
+	}
+
 	Super::AbilitySpecInputReleased(Spec);
 
 	if (Spec.IsActive())
 	{
+		FPredictionKey PredictionKey;
+		if (UGameplayAbility* Instance = Spec.GetPrimaryInstance())
+		{
+			PredictionKey = Instance->GetCurrentActivationInfoRef().GetActivationPredictionKey();
+		}
+
 		InvokeReplicatedEvent(EAbilityGenericReplicatedEvent::InputReleased,
 			Spec.Handle,
-			Spec.ActivationInfo.GetActivationPredictionKey());
+			PredictionKey);
 	}
-}
-
-void UMALAbilitySystemComponent::OnRep_ActivateAbilities()
-{
-	Super::OnRep_ActivateAbilities();
-	// Using DynamicAbilityTags instead of InputTagToAbilityMap - no rebuild needed
 }
 
 FGameplayAbilitySpec* UMALAbilitySystemComponent::FindAbilitySpecByInputTag(const FGameplayTag& InputTag)
@@ -244,7 +311,7 @@ FGameplayAbilitySpec* UMALAbilitySystemComponent::FindAbilitySpecByInputTag(cons
 
 	for (FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
-		if (Spec.DynamicAbilityTags.HasTagExact(InputTag))
+		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
 		{
 			return &Spec;
 		}

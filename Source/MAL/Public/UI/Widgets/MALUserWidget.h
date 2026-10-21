@@ -20,7 +20,7 @@ public:
 	void Hide();
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
-	bool bIsVisible;
+	bool bIsVisible = false;
 
 protected:
 	virtual void NativeConstruct() override;

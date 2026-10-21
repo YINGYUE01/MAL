@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/MALAnimInstance.h"
-#include "Character/MALCharacter.h"
+#include "Character/MALCharacterBase.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PawnMovementComponent.h"
 
@@ -13,7 +13,7 @@ void UMALAnimInstance::NativeInitializeAnimation()
 {
 	Super::NativeInitializeAnimation();
 
-	CachedCharacter = Cast<AMALCharacter>(TryGetPawnOwner());
+	CachedCharacter = Cast<AMALCharacterBase>(TryGetPawnOwner());
 }
 
 void UMALAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
@@ -22,7 +22,7 @@ void UMALAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	if (!CachedCharacter)
 	{
-		CachedCharacter = Cast<AMALCharacter>(TryGetPawnOwner());
+		CachedCharacter = Cast<AMALCharacterBase>(TryGetPawnOwner());
 		return;
 	}
 
@@ -89,7 +89,7 @@ EMALLocomotionState UMALAnimInstance::CalculateLocomotionState(float InSpeed) co
 	return EMALLocomotionState::Sprint;
 }
 
-AMALCharacter* UMALAnimInstance::GetMALCharacter() const
+AMALCharacterBase* UMALAnimInstance::GetMALCharacter() const
 {
 	return CachedCharacter.Get();
 }

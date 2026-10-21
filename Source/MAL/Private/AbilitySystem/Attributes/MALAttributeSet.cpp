@@ -2,6 +2,10 @@
 
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
 #include "GameplayEffectExtension.h"
+#include "Net/UnrealNetwork.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "Abilities/GameplayAbilityTypes.h"
+#include "Tags/MALGameplayTags.h"
 
 UMALAttributeSet::UMALAttributeSet()
 {
@@ -31,6 +35,148 @@ UMALAttributeSet::UMALAttributeSet()
 	InitHealth(350.0f);
 	InitMana(250.0f);
 	InitStamina(230.0f);
+
+	// ========== Meta ==========
+	InitDamage(0.0f);
+}
+
+void UMALAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	// Primary
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Vigor, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Strength, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Dexterity, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Endurance, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Spirit, COND_None, REPNOTIFY_Always);
+
+	// Secondary
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, HealthRegen, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MaxStamina, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, StaminaRegen, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, ManaRegen, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, PhysicalAttack, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MagicAttack, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, PhysicalDefense, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MagicDefense, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, CritChance, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, CritDamage, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, AttackSpeed, COND_None, REPNOTIFY_Always);
+
+	// Standalone
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Health, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Mana, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Stamina, COND_None, REPNOTIFY_Always);
+
+	// Damage is a meta attribute and intentionally not replicated.
+}
+
+void UMALAttributeSet::OnRep_Vigor(const FGameplayAttributeData& OldVigor)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, Vigor, OldVigor);
+}
+
+void UMALAttributeSet::OnRep_Strength(const FGameplayAttributeData& OldStrength)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, Strength, OldStrength);
+}
+
+void UMALAttributeSet::OnRep_Dexterity(const FGameplayAttributeData& OldDexterity)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, Dexterity, OldDexterity);
+}
+
+void UMALAttributeSet::OnRep_Endurance(const FGameplayAttributeData& OldEndurance)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, Endurance, OldEndurance);
+}
+
+void UMALAttributeSet::OnRep_Spirit(const FGameplayAttributeData& OldSpirit)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, Spirit, OldSpirit);
+}
+
+void UMALAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMaxHealth)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, MaxHealth, OldMaxHealth);
+}
+
+void UMALAttributeSet::OnRep_HealthRegen(const FGameplayAttributeData& OldHealthRegen)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, HealthRegen, OldHealthRegen);
+}
+
+void UMALAttributeSet::OnRep_MaxStamina(const FGameplayAttributeData& OldMaxStamina)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, MaxStamina, OldMaxStamina);
+}
+
+void UMALAttributeSet::OnRep_StaminaRegen(const FGameplayAttributeData& OldStaminaRegen)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, StaminaRegen, OldStaminaRegen);
+}
+
+void UMALAttributeSet::OnRep_MaxMana(const FGameplayAttributeData& OldMaxMana)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, MaxMana, OldMaxMana);
+}
+
+void UMALAttributeSet::OnRep_ManaRegen(const FGameplayAttributeData& OldManaRegen)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, ManaRegen, OldManaRegen);
+}
+
+void UMALAttributeSet::OnRep_PhysicalAttack(const FGameplayAttributeData& OldPhysicalAttack)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, PhysicalAttack, OldPhysicalAttack);
+}
+
+void UMALAttributeSet::OnRep_MagicAttack(const FGameplayAttributeData& OldMagicAttack)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, MagicAttack, OldMagicAttack);
+}
+
+void UMALAttributeSet::OnRep_PhysicalDefense(const FGameplayAttributeData& OldPhysicalDefense)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, PhysicalDefense, OldPhysicalDefense);
+}
+
+void UMALAttributeSet::OnRep_MagicDefense(const FGameplayAttributeData& OldMagicDefense)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, MagicDefense, OldMagicDefense);
+}
+
+void UMALAttributeSet::OnRep_CritChance(const FGameplayAttributeData& OldCritChance)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, CritChance, OldCritChance);
+}
+
+void UMALAttributeSet::OnRep_CritDamage(const FGameplayAttributeData& OldCritDamage)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, CritDamage, OldCritDamage);
+}
+
+void UMALAttributeSet::OnRep_AttackSpeed(const FGameplayAttributeData& OldAttackSpeed)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, AttackSpeed, OldAttackSpeed);
+}
+
+void UMALAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, Health, OldHealth);
+}
+
+void UMALAttributeSet::OnRep_Mana(const FGameplayAttributeData& OldMana)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, Mana, OldMana);
+}
+
+void UMALAttributeSet::OnRep_Stamina(const FGameplayAttributeData& OldStamina)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, Stamina, OldStamina);
 }
 
 void UMALAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
@@ -74,9 +220,46 @@ void UMALAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, f
 	{
 		NewValue = FMath::Clamp(NewValue, 0.1f, 5.0f);
 	}
+	// ---------- Meta: 伤害不能为负 ----------
+	else if (Attribute == GetDamageAttribute())
+	{
+		NewValue = FMath::Max(NewValue, 0.0f);
+	}
 }
 
 void UMALAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
 {
 	Super::PostGameplayEffectExecute(Data);
+
+	// Damage 是从 GE 进来的 meta 值；在这里一次性结算成 Health，并清零。
+	if (Data.EvaluatedData.Attribute == GetDamageAttribute())
+	{
+		const float LocalDamage = GetDamage();
+		SetDamage(0.0f);
+
+		if (LocalDamage > 0.0f)
+		{
+			const float OldHealth = GetHealth();
+			const float NewHealth = FMath::Clamp(OldHealth - LocalDamage, 0.0f, GetMaxHealth());
+			SetHealth(NewHealth);
+
+			if (OldHealth > 0.0f && NewHealth <= 0.0f)
+			{
+				if (AActor* Owner = GetOwningActor())
+				{
+					FGameplayEventData Payload;
+					Payload.Instigator = Data.EffectSpec.GetContext().GetInstigator();
+					Payload.Target = Owner;
+					Payload.EventMagnitude = LocalDamage;
+					UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(
+						Owner, UMALGameplayTags::Get()->Event_Death, Payload);
+				}
+			}
+		}
+	}
+	// MaxHealth 被 GE 修改后，保证当前 Health 不会超过新上限。
+	else if (Data.EvaluatedData.Attribute == GetMaxHealthAttribute())
+	{
+		SetHealth(FMath::Clamp(GetHealth(), 0.0f, GetMaxHealth()));
+	}
 }

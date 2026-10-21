@@ -24,7 +24,7 @@ struct FMALInputActionMapping
 
 	/** The InputAction asset to trigger */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	UInputAction* Action;
+	TObjectPtr<UInputAction> Action = nullptr;
 };
 
 /**

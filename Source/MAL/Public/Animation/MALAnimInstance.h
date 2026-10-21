@@ -6,7 +6,7 @@
 #include "Animation/AnimInstance.h"
 #include "MALAnimInstance.generated.h"
 
-class AMALCharacter;
+class AMALCharacterBase;
 class UCharacterMovementComponent;
 
 UENUM(BlueprintType)
@@ -65,12 +65,12 @@ public:
 	FRotator AimOffset = FRotator::ZeroRotator;
 
 protected:
-	AMALCharacter* GetMALCharacter() const;
+	AMALCharacterBase* GetMALCharacter() const;
 	void UpdateMovementData(float DeltaSeconds);
 	void UpdateAimOffset(float DeltaSeconds);
 	EMALLocomotionState CalculateLocomotionState(float InSpeed) const;
 
 private:
 	UPROPERTY()
-	TObjectPtr<AMALCharacter> CachedCharacter;
+	TObjectPtr<AMALCharacterBase> CachedCharacter;
 };
