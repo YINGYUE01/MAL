@@ -21,7 +21,8 @@ public class MAL : ModuleRules
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
-			"AIModule"
+			"AIModule",
+			"EngineCameras"
 		});
 
 		// Uncomment if you are using Slate UI

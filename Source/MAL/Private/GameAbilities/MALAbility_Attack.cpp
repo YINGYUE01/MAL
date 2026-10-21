@@ -7,6 +7,8 @@
 #include "Abilities/Tasks/AbilityTask_ApplyRootMotionMoveToForce.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "GameAbilities/MALDamageGameplayEffect.h"
+#include "GameAbilities/MALHitCameraShake.h"
+#include "Player/MALPlayerController.h"
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
 #include "AbilitySystemGlobals.h"
 #include "AbilitySystemBlueprintLibrary.h"
@@ -60,6 +62,9 @@ UMALAbility_Attack::UMALAbility_Attack()
 	// Combo presses must reach the server so ComboStep stays in sync; the ASC mirrors
 	// the engine's ServerSetInputPressed/Released when this flag is set.
 	bReplicateInputDirectly = true;
+
+	// Default hit feedback; designers can override the camera shake class in BP.
+	HitCameraShakeClass = UMALHitCameraShake::StaticClass();
 
 	// Default 4-step combo section names (override in Blueprint to match the montage).
 	ComboSections = { FName("Combo1"), FName("Combo2"), FName("Combo3"), FName("Combo4") };
@@ -519,6 +524,15 @@ void UMALAbility_Attack::OnWeaponHit(const FMALHitResult& HitResult)
 	{
 		SpecHandle.Data->SetSetByCallerMagnitude(UMALGameplayTags::Get()->Data_Damage, Damage);
 		SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
+	}
+
+	// Confirmed hit: ask the attacker's owning client to play camera shake + local hit-stop.
+	if (ACharacter* AttackerCharacter = Cast<ACharacter>(Avatar))
+	{
+		if (AMALPlayerController* PC = Cast<AMALPlayerController>(AttackerCharacter->GetController()))
+		{
+			PC->ClientOnHitLanded(HitStopDuration, HitCameraShakeClass);
+		}
 	}
 
 	// Broadcast WeaponHit event for future listeners (UI, hit-stop, audio, ...)

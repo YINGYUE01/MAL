@@ -11,9 +11,96 @@
 #include "GameFramework/Controller.h"
 #include "Components/MALAbilitySystemComponent.h"
 #include "Player/MALPlayerState.h"
+#include "Camera/PlayerCameraManager.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "TimerManager.h"
+#include "Engine/World.h"
 
 AMALPlayerController::AMALPlayerController()
 {
+}
+
+void AMALPlayerController::ClientOnHitLanded_Implementation(float HitStopDuration, TSubclassOf<UCameraShakeBase> ShakeClass)
+{
+	if (ShakeClass && PlayerCameraManager)
+	{
+		PlayerCameraManager->StartCameraShake(ShakeClass, 1.0f);
+	}
+
+	BeginHitStop(HitStopDuration);
+}
+
+void AMALPlayerController::BeginHitStop(float Duration)
+{
+	if (Duration <= 0.0f)
+	{
+		return;
+	}
+
+	if (!bHitStopActive)
+	{
+		bHitStopActive = true;
+
+		if (ACharacter* ControlledCharacter = Cast<ACharacter>(GetPawn()))
+		{
+			HitStopCharacter = ControlledCharacter;
+			HitStopRestoreTimeDilation = ControlledCharacter->CustomTimeDilation;
+
+			// Freeze movement/root motion locally for the hit-stop.
+			ControlledCharacter->CustomTimeDilation = 0.0f;
+
+			if (USkeletalMeshComponent* Mesh = ControlledCharacter->GetMesh())
+			{
+				if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
+				{
+					if (UAnimMontage* Montage = AnimInstance->GetCurrentActiveMontage())
+					{
+						HitStopAnimInstance = AnimInstance;
+						HitStopMontage = Montage;
+						HitStopRestoreRate = AnimInstance->Montage_GetPlayRate(Montage);
+						if (HitStopRestoreRate <= 0.0f)
+						{
+							HitStopRestoreRate = 1.0f;
+						}
+
+						// Pause the attack montage itself; movement is frozen by time dilation.
+						AnimInstance->Montage_SetPlayRate(Montage, 0.0f);
+					}
+				}
+			}
+		}
+	}
+
+	// Overlapping hits extend the stop instead of restoring the montage too early.
+	GetWorldTimerManager().ClearTimer(HitStopTimer);
+	GetWorldTimerManager().SetTimer(HitStopTimer, this, &AMALPlayerController::EndHitStop, Duration, false);
+}
+
+void AMALPlayerController::EndHitStop()
+{
+	bHitStopActive = false;
+
+	if (ACharacter* ControlledCharacter = HitStopCharacter.Get())
+	{
+		ControlledCharacter->CustomTimeDilation = HitStopRestoreTimeDilation;
+	}
+
+	if (UAnimInstance* AnimInstance = HitStopAnimInstance.Get())
+	{
+		if (UAnimMontage* Montage = HitStopMontage.Get())
+		{
+			if (AnimInstance->Montage_IsActive(Montage))
+			{
+				AnimInstance->Montage_SetPlayRate(Montage, HitStopRestoreRate);
+			}
+		}
+	}
+
+	HitStopCharacter = nullptr;
+	HitStopAnimInstance = nullptr;
+	HitStopMontage = nullptr;
 }
 
 void AMALPlayerController::BeginPlay()

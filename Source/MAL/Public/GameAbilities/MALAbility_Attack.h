@@ -12,6 +12,7 @@
 class UAnimMontage;
 class UPrimitiveComponent;
 class UAbilityTask_ApplyRootMotionMoveToForce;
+class UCameraShakeBase;
 
 /**
  * UMALAbility_Attack
@@ -132,6 +133,16 @@ protected:
 	/** Name of the weapon collision component to find on the character */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Damage")
 	FName WeaponCollisionSocketName = TEXT("weapon_collision");
+
+	// --- Hit feedback (hit-stop + camera shake) ---
+
+	/** How long the attacker's local animation/movement freezes on a confirmed hit. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|HitFeedback", meta = (ClampMin = "0.0", ClampMax = "0.2"))
+	float HitStopDuration = 0.06f;
+
+	/** Camera shake started on the attacker's owning client. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|HitFeedback")
+	TSubclassOf<UCameraShakeBase> HitCameraShakeClass;
 
 	// --- Hit event (GameplayEvent decoupling) ---
 
