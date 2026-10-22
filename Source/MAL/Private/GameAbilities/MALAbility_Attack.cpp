@@ -501,8 +501,14 @@ void UMALAbility_Attack::OnWeaponHit(const FMALHitResult& HitResult)
 	const float LevelScale = GetLevelScaledValue(TEXT("Damage"), 1.0f);
 	const float Damage = FMath::Max(0.0f, BaseDamage * LevelScale * (1.0f + ComboDamageBonusPerStep * Step));
 
-	UE_LOG(LogTemp, Log, TEXT("UMALAbility_Attack: weapon hit on %s (combo step %d, damage %.1f)"),
-		*HitResult.HitActor->GetName(), Step, Damage);
+	TSubclassOf<UGameplayEffect> GEClass = DamageGEClass;
+	if (!GEClass)
+	{
+		GEClass = UMALDamageGameplayEffect::StaticClass();
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("UMALAbility_Attack: weapon hit on %s (combo step %d, damage %.1f, GE %s, targetSets %d)"),
+		*HitResult.HitActor->GetName(), Step, Damage, *GetNameSafe(GEClass.Get()), TargetASC->GetSpawnedAttributes().Num());
 
 	if (Damage <= 0.0f)
 	{
@@ -513,17 +519,15 @@ void UMALAbility_Attack::OnWeaponHit(const FMALHitResult& HitResult)
 	Context.AddInstigator(Avatar, Avatar);
 	Context.AddSourceObject(this);
 
-	TSubclassOf<UGameplayEffect> GEClass = DamageGEClass;
-	if (!GEClass)
-	{
-		GEClass = UMALDamageGameplayEffect::StaticClass();
-	}
-
 	const FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(GEClass, GetAbilityLevel(), Context);
 	if (SpecHandle.IsValid())
 	{
 		SpecHandle.Data->SetSetByCallerMagnitude(UMALGameplayTags::Get()->Data_Damage, Damage);
 		SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMALAbility_Attack: MakeOutgoingSpec failed for %s"), *GetNameSafe(GEClass.Get()));
 	}
 
 	// Confirmed hit: ask the attacker's owning client to play camera shake + local hit-stop.

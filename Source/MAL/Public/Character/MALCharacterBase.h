@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
+#include "GameplayEffectTypes.h"
 #include "MALCharacterBase.generated.h"
 
+class UAbilitySystemComponent;
 class UGameplayEffect;
 class UMALAbilitySystemComponent;
 class UMALAttributeSet;
@@ -48,6 +50,19 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Class")
 	TObjectPtr<UMALClassDefinition> ClassDefinition;
 
+	/** True on the server and on every client once health reached zero. */
+	UFUNCTION(BlueprintPure, Category = "MAL|Death")
+	bool IsDead() const { return bIsDead; }
+
+	/**
+	 * Server side: enter the death state.
+	 *
+	 * Guarded by bIsDead, so a killing blow that lands several hits in one frame still runs the
+	 * shutdown once. Ignored on clients; they get the state through replication.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MAL|Death")
+	void HandleDeath(AActor* Killer = nullptr);
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttribute;
 
@@ -66,6 +81,33 @@ protected:
 
 	/** Re-init when the controlling controller changes (respawn/re-possession). */
 	virtual void OnRep_Controller() override;
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/**
+	 * Replicated so a client runs the same presentation path as the authority. The loose
+	 * Status.Dead tag and the ability cancellation stay server-only.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_IsDead, BlueprintReadOnly, Category = "MAL|Death")
+	bool bIsDead = false;
+
+	UFUNCTION()
+	void OnRep_IsDead();
+
+	/**
+	 * Shared shutdown: stops movement, AI logic and input, then fires the blueprint hook.
+	 *
+	 * The killer is only known on the authority. Clients receive nullptr because the
+	 * GameplayEffectSpec that carried it never leaves the server.
+	 */
+	virtual void ApplyDeathState(AActor* Killer);
+
+	/**
+	 * Blueprint hook for death montages, ragdoll, loot and despawn timers.
+	 * Runs once on the server and once on each client.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "MAL|Death", meta = (DisplayName = "On Death"))
+	void OnDeath(AActor* Killer);
 
 	/**
 	 * Resolve the ASC/AttributeSet pointers and initialize actor info.
@@ -96,4 +138,16 @@ protected:
 
 	/** Prevents clearing/regranting on every possession of the same character. */
 	bool bAbilitiesGranted = false;
+
+private:
+	/** Enter the death state when health crosses zero. Server only. */
+	void HandleHealthChanged(const FOnAttributeChangeData& Data);
+
+	/** Attach to the health attribute on whichever ASC this character currently uses. */
+	void BindHealthChange();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAbilitySystemComponent> BoundAbilitySystemComponent;
+
+	FDelegateHandle HealthChangedDelegateHandle;
 };

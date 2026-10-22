@@ -90,6 +90,18 @@ public:
 	FGameplayTag Data_Damage;
 
 	// -----------------------------------------------------------------------------
+	// Damage Type Tags - Select the attack/defense channel an execution uses
+	// -----------------------------------------------------------------------------
+
+	/** Physical damage channel (default when no type tag is present) */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Damage")
+	FGameplayTag Damage_Type_Physical;
+
+	/** Magic damage channel */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Damage")
+	FGameplayTag Damage_Type_Magic;
+
+	// -----------------------------------------------------------------------------
 	// Ability Tags - Represent gameplay abilities
 	// -----------------------------------------------------------------------------
 	

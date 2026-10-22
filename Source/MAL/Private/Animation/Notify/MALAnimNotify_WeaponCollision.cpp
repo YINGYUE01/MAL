@@ -4,6 +4,7 @@
 
 #include "Interfaces/MALComboAttackInterface.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(MALAnimNotify_WeaponCollision)
@@ -13,6 +14,15 @@ void UMALAnimNotify_WeaponCollision::Notify(USkeletalMeshComponent* MeshComp, UA
 	Super::Notify(MeshComp, Animation, EventReference);
 
 	if (!MeshComp)
+	{
+		return;
+	}
+
+	// Persona / AnimBlueprint preview worlds host a bare preview actor with no ASC, so there
+	// is never an animating ability to route to. Bail out silently instead of warning on
+	// every preview loop.
+	const UWorld* World = MeshComp->GetWorld();
+	if (!World || !World->IsGameWorld())
 	{
 		return;
 	}
@@ -36,7 +46,11 @@ void UMALAnimNotify_WeaponCollision::Notify(USkeletalMeshComponent* MeshComp, UA
 	IMALComboAttackInterface* ComboAbility = IMALComboAttackInterface::GetFromMesh(MeshComp);
 	if (!ComboAbility)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UMALAnimNotify_WeaponCollision: No combo ability found on mesh"));
+		// Legitimate game case: the montage is being played outside of an ability (plain
+		// PlayAnimMontage), so there is nothing to toggle collision on. Verbose keeps it
+		// debuggable without spamming the log.
+		UE_LOG(LogTemp, Verbose, TEXT("UMALAnimNotify_WeaponCollision: No combo ability driving %s (owner: %s)"),
+			*GetNameSafe(MeshComp), *GetNameSafe(Owner));
 		return;
 	}
 

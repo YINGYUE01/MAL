@@ -1,23 +1,22 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "GameAbilities/MALDamageGameplayEffect.h"
-#include "AbilitySystem/Attributes/MALAttributeSet.h"
-#include "Tags/MALGameplayTags.h"
+#include "AbilitySystem/Execution/MALDamageExecutionCalculation.h"
+#include "GameplayEffect.h"
 
 UMALDamageGameplayEffect::UMALDamageGameplayEffect()
 {
 	DurationPolicy = EGameplayEffectDurationType::Instant;
 
-	FGameplayModifierInfo& Modifier = Modifiers.AddDefaulted_GetRef();
-	Modifier.Attribute = UMALAttributeSet::GetDamageAttribute();
-	Modifier.ModifierOp = EGameplayModOp::Additive;
+	// Damage is no longer applied through a plain SetByCaller modifier: it goes through
+	// the execution so attack/defense scaling and the crit roll are always applied.
+	// Modifiers intentionally stays empty.
+	FGameplayEffectExecutionDefinition DamageExecution;
+	DamageExecution.CalculationClass = UMALDamageExecutionCalculation::StaticClass();
+	Executions.Add(DamageExecution);
 
-	FSetByCallerFloat SetByCaller;
-	SetByCaller.DataTag = UMALGameplayTags::Get()->Data_Damage;
-	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
-
-	UE_LOG(LogTemp, Verbose, TEXT("UMALDamageGameplayEffect: modifiers=%d attributeValid=%s tag=%s"),
+	UE_LOG(LogTemp, Verbose, TEXT("UMALDamageGameplayEffect: executions=%d modifiers=%d calculation=%s"),
+		Executions.Num(),
 		Modifiers.Num(),
-		UMALAttributeSet::GetDamageAttribute().IsValid() ? TEXT("true") : TEXT("false"),
-		*SetByCaller.DataTag.ToString());
+		DamageExecution.CalculationClass ? *DamageExecution.CalculationClass->GetName() : TEXT("None"));
 }

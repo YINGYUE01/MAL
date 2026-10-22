@@ -21,6 +21,12 @@ public:
 	virtual void InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor) override;
 
 	/**
+	 * Allocate a FMALGameplayEffectContext instead of the engine default so damage
+	 * executions can publish crit / damage-channel info to presentation code.
+	 */
+	virtual FGameplayEffectContextHandle MakeEffectContext() const override;
+
+	/**
 	 * Grant all abilities from an AbilitySet, storing the InputTag in DynamicAbilityTags.
 	 * Returns the granted spec handles so the caller can remove them later.
 	 * Server only.

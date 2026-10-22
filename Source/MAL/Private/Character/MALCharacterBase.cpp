@@ -7,6 +7,12 @@
 #include "Data/MALClassDefinition.h"
 #include "Data/MALAbilitySet.h"
 #include "GameplayEffect.h"
+#include "AIController.h"
+#include "BrainComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "Net/UnrealNetwork.h"
+#include "Tags/MALGameplayTags.h"
 
 AMALCharacterBase::AMALCharacterBase()
 {
@@ -79,6 +85,36 @@ void AMALCharacterBase::InitializeAbilitySystem()
 			AbilitySystemComponent->InitAbilityActorInfo(OwnerActor, this);
 		}
 	}
+
+	BindHealthChange();
+}
+
+void AMALCharacterBase::BindHealthChange()
+{
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+	if (!ASC)
+	{
+		// On a client the PlayerState (and with it the ASC) replicates in later; OnRep_PlayerState
+		// runs this again once it does.
+		return;
+	}
+
+	if (BoundAbilitySystemComponent.Get() == ASC && HealthChangedDelegateHandle.IsValid())
+	{
+		return;
+	}
+
+	// Re-possession can hand the character a different ASC. Drop the listener on the old one
+	// first, otherwise the old component keeps calling into a character that no longer owns it.
+	if (UAbilitySystemComponent* Previous = BoundAbilitySystemComponent.Get())
+	{
+		Previous->GetGameplayAttributeValueChangeDelegate(UMALAttributeSet::GetHealthAttribute())
+			.Remove(HealthChangedDelegateHandle);
+	}
+
+	BoundAbilitySystemComponent = ASC;
+	HealthChangedDelegateHandle = ASC->GetGameplayAttributeValueChangeDelegate(UMALAttributeSet::GetHealthAttribute())
+		.AddUObject(this, &AMALCharacterBase::HandleHealthChanged);
 }
 
 void AMALCharacterBase::BeginPlay()
@@ -169,6 +205,94 @@ void AMALCharacterBase::ApplyDefaultAttributes()
 	MarkDefaultAttributesApplied();
 
 	UE_LOG(LogTemp, Verbose, TEXT("MALCharacterBase::ApplyDefaultAttributes %s: done"), *GetName());
+}
+
+void AMALCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AMALCharacterBase, bIsDead);
+}
+
+void AMALCharacterBase::HandleHealthChanged(const FOnAttributeChangeData& Data)
+{
+	// Clients receive the replicated health change too, but the death decision belongs to the
+	// authority; their side is driven by OnRep_IsDead.
+	if (bIsDead || Data.NewValue > 0.0f || !HasAuthority())
+	{
+		return;
+	}
+
+	// Health sitting at zero with MaxHealth also at zero means the attribute GameplayEffects have
+	// not been applied yet. That is "not initialised", not "dead".
+	const UMALAttributeSet* CurrentAttributeSet = GetMALAttributeSet();
+	if (!CurrentAttributeSet || CurrentAttributeSet->GetMaxHealth() <= 0.0f)
+	{
+		return;
+	}
+
+	// The killing blow's instigator lives in the GameplayEffectSpec, which this delegate does not
+	// carry. Call HandleDeath yourself from the damage pipeline if the killer is needed.
+	HandleDeath(nullptr);
+}
+
+void AMALCharacterBase::HandleDeath(AActor* Killer)
+{
+	if (bIsDead || !HasAuthority())
+	{
+		return;
+	}
+
+	bIsDead = true;
+
+	// The loose tag is what blocks abilities that declare Status.Dead in their activation tags;
+	// cancelling clears the ones already running, such as an attack montage mid-swing.
+	if (UMALAbilitySystemComponent* MALASC = GetMALAbilitySystemComponent())
+	{
+		MALASC->AddLooseGameplayTag(UMALGameplayTags::Get()->Status_Dead);
+		MALASC->CancelAllAbilities();
+	}
+
+	// OnRep does not run on the authority, so the shared path is invoked explicitly.
+	ApplyDeathState(Killer);
+}
+
+void AMALCharacterBase::ApplyDeathState(AActor* Killer)
+{
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		// DisableMovement rather than StopMovement: the latter only zeroes the velocity, and the
+		// corpse would resume falling or sliding as soon as something pushes it.
+		Movement->StopMovementImmediately();
+		Movement->DisableMovement();
+	}
+
+	// Enemies: stop the behaviour tree, otherwise the dead pawn keeps patrolling or chasing.
+	if (AAIController* AIController = Cast<AAIController>(GetController()))
+	{
+		if (UBrainComponent* BrainComponent = AIController->GetBrainComponent())
+		{
+			BrainComponent->StopLogic(TEXT("Dead"));
+		}
+	}
+
+	// Players: cut input so the corpse stops buffering moves and attacks. The controller is not
+	// replicated to other clients, so this only ever runs where it matters.
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		PlayerController->DisableInput(PlayerController);
+	}
+
+	OnDeath(Killer);
+}
+
+void AMALCharacterBase::OnRep_IsDead()
+{
+	if (bIsDead)
+	{
+		// The spec that carried the killer never leaves the server.
+		ApplyDeathState(nullptr);
+	}
 }
 
 void AMALCharacterBase::GrantAbilities()

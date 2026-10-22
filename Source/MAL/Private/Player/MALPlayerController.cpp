@@ -17,6 +17,9 @@
 #include "Animation/AnimMontage.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
+#include "Engine/LocalPlayer.h"
+#include "UI/Framework/MALDamageNumberSubsystem.h"
+#include "UI/Framework/MALUISubsystem.h"
 
 AMALPlayerController::AMALPlayerController()
 {
@@ -30,6 +33,50 @@ void AMALPlayerController::ClientOnHitLanded_Implementation(float HitStopDuratio
 	}
 
 	BeginHitStop(HitStopDuration);
+}
+
+void AMALPlayerController::ClientShowDamageNumber_Implementation(float Amount, bool bCritical, bool bMagic, bool bKillingBlow, FVector WorldLocation)
+{
+	if (UMALDamageNumberSubsystem* DamageNumberSubsystem = ULocalPlayer::GetSubsystem<UMALDamageNumberSubsystem>(GetLocalPlayer()))
+	{
+		DamageNumberSubsystem->ShowDamageNumber(Amount, bCritical, bMagic, bKillingBlow, WorldLocation);
+	}
+}
+
+void AMALPlayerController::RouteDamageNumber(AActor* Victim, AActor* Instigator, const FVector& WorldLocation,
+	float Amount, bool bCritical, bool bMagic, bool bKillingBlow)
+{
+	if (!Victim || Amount <= 0.0f)
+	{
+		return;
+	}
+
+	// Both roles can belong to the same client (self damage), and a hit is usually relevant to two
+	// different ones, so deduplicate before sending.
+	TSet<AMALPlayerController*> Recipients;
+
+	auto NotifyOwner = [&Recipients, &WorldLocation, Amount, bCritical, bMagic, bKillingBlow](AActor* Actor)
+	{
+		// The controller hangs off the pawn, not the PlayerState, and an AI-driven pawn simply
+		// fails the cast: enemies have nobody watching their own numbers.
+		const APawn* Pawn = Cast<APawn>(Actor);
+		if (!Pawn)
+		{
+			return;
+		}
+
+		AMALPlayerController* PlayerController = Cast<AMALPlayerController>(Pawn->GetController());
+		if (!PlayerController || Recipients.Contains(PlayerController))
+		{
+			return;
+		}
+
+		Recipients.Add(PlayerController);
+		PlayerController->ClientShowDamageNumber(Amount, bCritical, bMagic, bKillingBlow, WorldLocation);
+	};
+
+	NotifyOwner(Victim);
+	NotifyOwner(Instigator);
 }
 
 void AMALPlayerController::BeginHitStop(float Duration)
@@ -119,6 +166,57 @@ void AMALPlayerController::BeginPlay()
 		{
 			UE_LOG(LogTemp, Error, TEXT("AMALPlayerController: DefaultMappingContext is not set. No input will be received."));
 		}
+	}
+
+	// Only a local player has a HUD: remote clients render their own and dedicated servers have
+	// no viewport at all.
+	if (IsLocalController())
+	{
+		if (UMALUISubsystem* UISubsystem = ULocalPlayer::GetSubsystem<UMALUISubsystem>(GetLocalPlayer()))
+		{
+			UISubsystem->CreateHUD(HUDWidgetClass);
+		}
+
+		if (UMALDamageNumberSubsystem* DamageNumberSubsystem = ULocalPlayer::GetSubsystem<UMALDamageNumberSubsystem>(GetLocalPlayer()))
+		{
+			DamageNumberSubsystem->SetDamageNumberWidgetClass(DamageNumberWidgetClass);
+		}
+	}
+}
+
+void AMALPlayerController::TogglePauseMenu()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	UMALUISubsystem* UISubsystem = ULocalPlayer::GetSubsystem<UMALUISubsystem>(GetLocalPlayer());
+	if (!UISubsystem)
+	{
+		return;
+	}
+
+	if (UISubsystem->IsMenuOpen())
+	{
+		UISubsystem->PopMenu();
+	}
+	else if (PauseMenuClass)
+	{
+		UISubsystem->PushMenu(PauseMenuClass);
+	}
+}
+
+void AMALPlayerController::CloseTopMenu()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (UMALUISubsystem* UISubsystem = ULocalPlayer::GetSubsystem<UMALUISubsystem>(GetLocalPlayer()))
+	{
+		UISubsystem->PopMenu();
 	}
 }
 

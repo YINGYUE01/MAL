@@ -3,6 +3,7 @@
 #include "Components/MALAbilitySystemComponent.h"
 #include "GameAbilities/MALGameplayAbility.h"
 #include "Data/MALAbilitySet.h"
+#include "AbilitySystem/MALGameplayEffectContext.h"
 #include "GameplayTagContainer.h"
 
 UMALAbilitySystemComponent::UMALAbilitySystemComponent()
@@ -20,6 +21,21 @@ void UMALAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AAct
 	// owner and UAbilitySystemComponent::InitializeComponent discovers it automatically.
 	// Calling InitStats at this point would create a *second* AttributeSet because this
 	// virtual is invoked before the owner's subobjects are scanned.
+}
+
+FGameplayEffectContextHandle UMALAbilitySystemComponent::MakeEffectContext() const
+{
+	// Mirrors UAbilitySystemComponent::MakeEffectContext but allocates the MAL context so
+	// executions can write crit / channel metadata that replicates to clients.
+	FGameplayEffectContextHandle Context = FGameplayEffectContextHandle(new FMALGameplayEffectContext());
+
+	if (ensureMsgf(AbilityActorInfo.IsValid(), TEXT("MALASC::MakeEffectContext - AbilityActorInfo is not valid.")))
+	{
+		// By default use the owner and avatar as the instigator and causer.
+		Context.AddInstigator(AbilityActorInfo->OwnerActor.Get(), AbilityActorInfo->AvatarActor.Get());
+	}
+
+	return Context;
 }
 
 TArray<FGameplayAbilitySpecHandle> UMALAbilitySystemComponent::GrantAbilitySet(const UMALAbilitySet* AbilitySet)

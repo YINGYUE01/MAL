@@ -5,7 +5,56 @@
 #include "Net/UnrealNetwork.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Abilities/GameplayAbilityTypes.h"
+#include "AbilitySystem/MALGameplayEffectContext.h"
+#include "Player/MALPlayerController.h"
 #include "Tags/MALGameplayTags.h"
+
+namespace
+{
+	/**
+	 * Hand one resolved hit to the presentation layer.
+	 *
+	 * Only the authority knows the post-mitigation value, so a client-side predicted effect must
+	 * not draw a number of its own on top of the replicated one.
+	 */
+	void NotifyDamageNumber(UMALAttributeSet* AttributeSet, const FGameplayEffectSpec& Spec, float Damage, bool bKillingBlow)
+	{
+		AActor* Victim = AttributeSet ? AttributeSet->GetOwningActor() : nullptr;
+		if (!Victim || !Victim->HasAuthority())
+		{
+			return;
+		}
+
+		const FGameplayEffectContext* EffectContext = Spec.GetContext().Get();
+
+		// A plain GE (no MAL context) still gets a number; it just has no crit or channel metadata.
+		const FMALGameplayEffectContext* MALContext = nullptr;
+		if (EffectContext && EffectContext->GetScriptStruct() &&
+			EffectContext->GetScriptStruct()->IsChildOf(FMALGameplayEffectContext::StaticStruct()))
+		{
+			MALContext = static_cast<const FMALGameplayEffectContext*>(EffectContext);
+		}
+
+		// Impact point when the hit carried one, otherwise above the victim's pelvis so the number
+		// clears the character mesh instead of spawning inside it.
+		FVector WorldLocation = Victim->GetActorLocation();
+		WorldLocation.Z += Victim->GetSimpleCollisionHalfHeight() * 0.5f;
+		if (EffectContext)
+		{
+			if (const FHitResult* HitResult = EffectContext->GetHitResult())
+			{
+				WorldLocation = HitResult->ImpactPoint;
+			}
+		}
+
+		AMALPlayerController::RouteDamageNumber(
+			Victim, EffectContext ? EffectContext->GetInstigator() : nullptr,
+			WorldLocation, Damage,
+			MALContext && MALContext->IsCriticalHit(),
+			MALContext && MALContext->IsMagicDamage(),
+			bKillingBlow);
+	}
+}
 
 UMALAttributeSet::UMALAttributeSet()
 {
@@ -237,13 +286,23 @@ void UMALAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		const float LocalDamage = GetDamage();
 		SetDamage(0.0f);
 
+		// Verbose so damage math can be inspected on demand without spamming the log.
+		UE_LOG(LogTemp, Verbose, TEXT("MALAttributeSet: %s Damage=%.2f Health=%.2f MaxHealth=%.2f"),
+			*GetNameSafe(GetOwningActor()), LocalDamage, GetHealth(), GetMaxHealth());
+
 		if (LocalDamage > 0.0f)
 		{
 			const float OldHealth = GetHealth();
 			const float NewHealth = FMath::Clamp(OldHealth - LocalDamage, 0.0f, GetMaxHealth());
 			SetHealth(NewHealth);
 
-			if (OldHealth > 0.0f && NewHealth <= 0.0f)
+			const bool bKillingBlow = (OldHealth > 0.0f && NewHealth <= 0.0f);
+
+			// Floating damage number: the same path serves enemies and the player, the recipients
+			// are decided by who owns the victim and who landed the blow.
+			NotifyDamageNumber(this, Data.EffectSpec, LocalDamage, bKillingBlow);
+
+			if (bKillingBlow)
 			{
 				if (AActor* Owner = GetOwningActor())
 				{

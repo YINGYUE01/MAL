@@ -6,6 +6,8 @@
 #include "Character/MALCharacterBase.h"
 #include "MALEnemyCharacter.generated.h"
 
+class UMALWorldWidgetComponent;
+
 /**
  * AMALEnemyCharacter
  *
@@ -20,4 +22,8 @@ class MAL_API AMALEnemyCharacter : public AMALCharacterBase
 
 public:
 	AMALEnemyCharacter();
+
+	/** World-space health bar shown above the enemy. Set its WidgetClass on the blueprint. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|UI")
+	TObjectPtr<UMALWorldWidgetComponent> HealthBarWidget;
 };

@@ -41,6 +41,10 @@ void UMALGameplayTags::InitializeNativeTags()
 	Data_Shield = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Data.Shield")), TEXT("Shield attribute"));
 	Data_Damage = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Data.Damage")), TEXT("Damage attribute"));
 
+	// Damage Type Tags
+	Damage_Type_Physical = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Damage.Type.Physical")), TEXT("Physical damage channel"));
+	Damage_Type_Magic = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Damage.Type.Magic")), TEXT("Magic damage channel"));
+
 	// Ability Tags
 	Ability_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Attack")), TEXT("Attack ability"));
 	Ability_Defend = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Defend")), TEXT("Defend ability"));

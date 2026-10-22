@@ -17,7 +17,9 @@ public class MAL : ModuleRules
 			"GameplayAbilities",
 			"GameplayTags",
 			"GameplayTasks",
-			"UMG"
+			"UMG",
+			"ModelViewViewModel",
+			"FieldNotification"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
