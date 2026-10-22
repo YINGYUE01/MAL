@@ -26,6 +26,7 @@
 #include "GameFramework/RootMotionSource.h"
 #include "GenericTeamAgentInterface.h"
 #include "Engine/World.h"
+#include "TimerManager.h"
 
 namespace
 {
@@ -163,6 +164,10 @@ void UMALAbility_Attack::EndAbility(
 	ResetComboState();
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+
+	// DisableWeaponCollision above may have armed a release for a hit window that is now moot.
+	// Clearing after Super also covers the ability ending on its own, normally or cancelled.
+	CancelRecoveryRelease();
 }
 
 void UMALAbility_Attack::OnMontageCompleted()
@@ -351,6 +356,11 @@ void UMALAbility_Attack::OpenComboWindow()
 void UMALAbility_Attack::CloseComboWindow()
 {
 	bComboWindowOpen = false;
+
+	// Past this point the chain can no longer be extended, so the rest of the montage is pure
+	// recovery. Re-arming the timer here (rather than relying only on the hit window close)
+	// keeps the grace period aligned with the last frame the player could still act.
+	ScheduleRecoveryRelease();
 }
 
 void UMALAbility_Attack::TriggerLunge()
@@ -367,6 +377,10 @@ void UMALAbility_Attack::OnHitEventReceived(FGameplayEventData Payload)
 
 void UMALAbility_Attack::EnableWeaponCollision()
 {
+	// A new hit window means this section still owns the ability: a release left over from the
+	// previous section would end it in the middle of the swing.
+	CancelRecoveryRelease();
+
 	// Guard: if already enabled, unbind first to avoid duplicate delegate binding
 	if (WeaponCollisionComp)
 	{
@@ -426,6 +440,52 @@ void UMALAbility_Attack::DisableWeaponCollision()
 	}
 
 	HitActorsThisSwing.Empty();
+
+	// The hit window is over; everything left in the montage is recovery. Do not keep the
+	// character locked for animation nobody is going to watch.
+	ScheduleRecoveryRelease();
+}
+
+void UMALAbility_Attack::ScheduleRecoveryRelease()
+{
+	UWorld* World = GetWorld();
+	if (!World || !IsActive())
+	{
+		return;
+	}
+
+	// Re-arm cleanly: one montage can open and close several hit windows.
+	World->GetTimerManager().ClearTimer(RecoveryReleaseTimer);
+
+	if (RecoveryReleaseDelay <= 0.0f)
+	{
+		ReleaseRecovery();
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(RecoveryReleaseTimer, this,
+		&UMALAbility_Attack::ReleaseRecovery, RecoveryReleaseDelay, false);
+}
+
+void UMALAbility_Attack::CancelRecoveryRelease()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RecoveryReleaseTimer);
+	}
+}
+
+void UMALAbility_Attack::ReleaseRecovery()
+{
+	if (!IsActive())
+	{
+		return;
+	}
+
+	// EndAbility stops the montage through bStopWhenAbilityEnds, so the tail fades out on the
+	// montage's own blend-out time instead of snapping. Status.Attacking drops with the ability,
+	// which is exactly what AMALPlayerController gates Move and Jump on.
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, false);
 }
 
 void UMALAbility_Attack::OnWeaponOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UI/MALDamageNumberTypes.h"
 #include "UI/Widgets/MALUserWidget.h"
 #include "MALDamageNumberWidget.generated.h"
 
@@ -40,6 +41,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MAL|UI|Damage")
 	UMALDamageNumberViewModel* GetDamageNumberViewModel() const { return ViewModel; }
 
+	/**
+	 * True while the number being played came from a critical hit.
+	 *
+	 * Exposed so OnDamageNumberPlayed can add its own flourishes (crit sting, HUD particles)
+	 * without having to re-derive the flag from the view model.
+	 */
+	UFUNCTION(BlueprintPure, Category = "MAL|UI|Damage")
+	bool IsCriticalHit() const { return bShowAsCritical; }
+
 	/** Broadcast once the lifetime elapsed. The subsystem uses it to recycle the widget. */
 	FSimpleDelegate OnPlaybackFinished;
 
@@ -57,6 +67,13 @@ protected:
 	/** Total seconds the number stays on screen before it is recycled. */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage", meta = (ClampMin = "0.05"))
 	float Lifetime = 0.85f;
+
+	/**
+	 * Colour per hit type. Authored on the view so re-skinning the numbers is a blueprint edit;
+	 * the view model turns the hit's flags into one of these entries.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage|Color")
+	FMALDamageNumberColors Colors;
 
 	/** Seconds the number stays fully opaque before it starts fading out. */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage", meta = (ClampMin = "0.0"))
@@ -96,6 +113,47 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage")
 	int32 ZOrder = 20;
 
+	/**
+	 * Resting size of a critical number relative to a normal one. Above 1 so a crit stays
+	 * recognisable after the burst has settled, not just during the first few frames.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage|Critical", meta = (ClampMin = "1.0"))
+	float CriticalRestScale = 1.35f;
+
+	/** Size a critical bursts to on its first frame, before settling to CriticalRestScale. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage|Critical", meta = (ClampMin = "1.0"))
+	float CriticalPopScale = 1.95f;
+
+	/**
+	 * Seconds the burst takes to settle. Short on purpose: a slow zoom reads as a UI bug, while a
+	 * three or four frame snap reads as impact.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage|Critical", meta = (ClampMin = "0.01"))
+	float CriticalPopDuration = 0.16f;
+
+	/** Horizontal shake amplitude in viewport units. Decays to zero over CriticalPopDuration. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage|Critical", meta = (ClampMin = "0.0"))
+	float CriticalShakeAmplitude = 6.0f;
+
+	/** Shake cycles per second. High enough to read as a punch, not as a wobble. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage|Critical", meta = (ClampMin = "0.0"))
+	float CriticalShakeFrequency = 18.0f;
+
+	/**
+	 * Scatter multiplier for criticals. A crit usually lands right after the fast normal hits that
+	 * preceded it, so it is pushed further aside instead of piling into the same spot.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage|Critical", meta = (ClampMin = "1.0"))
+	float CriticalScatterScale = 1.9f;
+
+	/** Rise speed multiplier, so a crit launches harder before settling on the same curve. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage|Critical", meta = (ClampMin = "1.0"))
+	float CriticalRiseScale = 1.4f;
+
+	/** Lifetime multiplier, so the loudest number also lingers a beat longer. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Damage|Critical", meta = (ClampMin = "1.0"))
+	float CriticalLifetimeScale = 1.2f;
+
 	/** Hook for extra flourishes; rise, fade and distance scaling are already handled in C++. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "MAL|UI|Damage", meta = (DisplayName = "On Damage Number Played"))
 	void OnDamageNumberPlayed();
@@ -119,6 +177,18 @@ private:
 
 	float ComputeDistanceScale(float CameraDistance) const;
 
+	/** Distance scale with the critical rest scale and the burst curve folded in. */
+	float ComputeRenderScale(float CameraDistance) const;
+
+	/** 1 for a normal hit; bursts to CriticalPopScale and snaps back for a critical. */
+	float ComputeCriticalPopScale() const;
+
+	/** Horizontal shake in viewport units; zero once the burst window elapsed. */
+	float ComputeCriticalShake() const;
+
+	/** Lifetime with the critical multiplier applied. */
+	float GetEffectiveLifetime() const;
+
 	UPROPERTY()
 	TObjectPtr<UMALDamageNumberViewModel> ViewModel;
 
@@ -128,6 +198,9 @@ private:
 	float LateralOffset = 0.0f;
 
 	bool bPlaying = false;
+
+	/** Set per play from the hit's crit flag; drives every critical-only flourish below. */
+	bool bShowAsCritical = false;
 
 	/** Tracks the last visibility we applied so a steady number does not invalidate every frame. */
 	bool bProjectedOnScreen = true;

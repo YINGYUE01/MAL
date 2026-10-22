@@ -19,7 +19,10 @@ public class MAL : ModuleRules
 			"GameplayTasks",
 			"UMG",
 			"ModelViewViewModel",
-			"FieldNotification"
+			"FieldNotification",
+			// FSlateColor is exposed on a public view model property (damage number colour),
+			// so its module has to be a public dependency, not a private one.
+			"SlateCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {

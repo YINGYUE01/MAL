@@ -24,12 +24,20 @@ void UMALDamageNumberWidget::PlayDamageNumber(float InAmount, bool bInCritical, 
 	}
 
 	// Values are written after the bindings are live, so the first frame already shows this hit
-	// rather than the previous one the pooled widget was carrying.
+	// rather than the previous one the pooled widget was carrying. The palette goes first: SetDamage
+	// resolves the colour against it, and a pooled widget may have outlived a blueprint change.
+	ViewModel->SetColorPalette(Colors);
 	ViewModel->SetDamage(InAmount, bInCritical, bInMagic, bInKillingBlow);
+
+	bShowAsCritical = bInCritical;
 
 	WorldLocation = InWorldLocation;
 	ElapsedTime = 0.0f;
-	LateralOffset = FMath::FRandRange(-HorizontalScatter, HorizontalScatter);
+
+	// Criticals spread wider: they usually land right after the fast normal hits that preceded
+	// them, and sharing their exact jitter would pile the numbers into one illegible blob.
+	const float Scatter = bInCritical ? HorizontalScatter * CriticalScatterScale : HorizontalScatter;
+	LateralOffset = FMath::FRandRange(-Scatter, Scatter);
 	bPlaying = true;
 
 	SetRenderOpacity(1.0f);
@@ -102,12 +110,13 @@ void UMALDamageNumberWidget::NativeTick(const FGeometry& MyGeometry, float InDel
 
 	ElapsedTime += InDeltaTime;
 
-	const float SafeLifetime = FMath::Max(Lifetime, 0.05f);
+	const float SafeLifetime = GetEffectiveLifetime();
 	const float Age = FMath::Clamp(ElapsedTime / SafeLifetime, 0.0f, 1.0f);
 
 	// Decelerating drift: it leaps out of the hit and settles while fading. Linear motion reads
 	// as text mechanically sliding upwards.
-	WorldLocation.Z += RiseSpeed * InDeltaTime * (1.0f - Age);
+	const float EffectiveRise = bShowAsCritical ? RiseSpeed * CriticalRiseScale : RiseSpeed;
+	WorldLocation.Z += EffectiveRise * InDeltaTime * (1.0f - Age);
 
 	// Hold at full opacity first, then fade over the remainder of the lifetime.
 	const float FadeStart = FMath::Clamp(HoldTime / SafeLifetime, 0.0f, 1.0f);
@@ -168,15 +177,19 @@ void UMALDamageNumberWidget::UpdateScreenPosition()
 	// number starts at the hit and grows rightwards, which reads as "offset to the right".
 	ViewportSlot.Alignment = FVector2D(0.5f, 0.5f);
 
+	// The crit shake rides on top of the scatter, so a critical both lands further aside and
+	// trembles at its own position instead of dragging its neighbours along.
+	const float ShakeOffset = ComputeCriticalShake();
+
 	// bRemoveDPIScale must stay false: Projected is already in viewport units. Asking the helper
 	// to strip the DPI scale again would divide it a second time and shift the number sideways
 	// by an amount that grows with the viewport size.
 	ViewportSlot = UGameViewportSubsystem::SetWidgetSlotPosition(ViewportSlot, this,
-		FVector2D(Projected.X + LateralOffset, Projected.Y), /*bRemoveDPIScale*/ false);
+		FVector2D(Projected.X + LateralOffset + ShakeOffset, Projected.Y), /*bRemoveDPIScale*/ false);
 
 	Subsystem->SetWidgetSlot(this, ViewportSlot);
 
-	SetRenderScale(FVector2D(ComputeDistanceScale(Projected.Z)));
+	SetRenderScale(FVector2D(ComputeRenderScale(Projected.Z)));
 }
 
 FVector2D UMALDamageNumberWidget::MeasureWidgetSize() const
@@ -203,4 +216,67 @@ float UMALDamageNumberWidget::ComputeDistanceScale(float CameraDistance) const
 {
 	const float Scale = ReferenceDistance / FMath::Max(CameraDistance, 1.0f);
 	return FMath::Clamp(Scale, MinDistanceScale, MaxDistanceScale);
+}
+
+float UMALDamageNumberWidget::ComputeRenderScale(float CameraDistance) const
+{
+	float Scale = ComputeDistanceScale(CameraDistance);
+
+	if (bShowAsCritical)
+	{
+		// The rest scale holds for the whole life and the burst decays on top of it, so the number
+		// never shrinks back to normal size halfway through its own animation.
+		Scale *= CriticalRestScale * ComputeCriticalPopScale();
+	}
+
+	return Scale;
+}
+
+float UMALDamageNumberWidget::ComputeCriticalPopScale() const
+{
+	if (!bShowAsCritical || CriticalPopScale <= 1.0f)
+	{
+		return 1.0f;
+	}
+
+	const float Window = FMath::Max(CriticalPopDuration, KINDA_SMALL_NUMBER);
+	const float Progress = FMath::Clamp(ElapsedTime / Window, 0.0f, 1.0f);
+	if (Progress >= 1.0f)
+	{
+		return 1.0f;
+	}
+
+	// Cubic falloff: oversized for a couple of frames and then a hard snap back. A linear ramp
+	// reads as a deliberate zoom rather than an impact.
+	const float Remaining = 1.0f - Progress;
+	return FMath::Lerp(1.0f, CriticalPopScale, Remaining * Remaining * Remaining);
+}
+
+float UMALDamageNumberWidget::ComputeCriticalShake() const
+{
+	if (!bShowAsCritical || CriticalShakeAmplitude <= 0.0f || CriticalShakeFrequency <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// Shake lives inside the burst window only. A number that keeps vibrating for its whole life
+	// reads as broken text instead of a hit.
+	const float Window = FMath::Max(CriticalPopDuration, KINDA_SMALL_NUMBER);
+	const float Progress = FMath::Clamp(ElapsedTime / Window, 0.0f, 1.0f);
+	if (Progress >= 1.0f)
+	{
+		return 0.0f;
+	}
+
+	// Same cubic decay as the burst: position and scale settle together, which is what sells the
+	// punch. A sine that outlives the scale change looks like a rendering glitch.
+	const float Remaining = 1.0f - Progress;
+	const float Phase = ElapsedTime * CriticalShakeFrequency * 2.0f * PI;
+	return FMath::Sin(Phase) * CriticalShakeAmplitude * (Remaining * Remaining * Remaining);
+}
+
+float UMALDamageNumberWidget::GetEffectiveLifetime() const
+{
+	const float Base = FMath::Max(Lifetime, 0.05f);
+	return bShowAsCritical ? Base * CriticalLifetimeScale : Base;
 }

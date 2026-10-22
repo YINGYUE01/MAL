@@ -55,6 +55,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Combo", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float ComboInputBufferWindow = 0.25f;
 
+	/**
+	 * Seconds between the hit window closing and the ability releasing movement.
+	 *
+	 * The tail of an attack montage is recovery the player is not going to watch. Holding
+	 * Status.Attacking through it locks Move/Jump (see AMALPlayerController) and keeps
+	 * ActivationBlockedTags up, so the next input feels unresponsive. Ending here lets the
+	 * montage blend out while the character is already free again.
+	 *
+	 * Must stay at or above the combo window length, otherwise chaining gets cut off before the
+	 * player can act on it. Set to 0 to release on the frame the hit window closes.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Recovery", meta = (ClampMin = "0.0", ClampMax = "1.5"))
+	float RecoveryReleaseDelay = 0.25f;
+
 	/** Forward lunge distance per hit (fixed distance along the lunge direction) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Lunge")
 	float LungeDistance = 150.0f;
@@ -96,6 +110,20 @@ protected:
 
 	/** Current step derived from the montage's active section (authoritative on both sides). */
 	int32 GetCurrentComboStepFromMontage() const;
+
+	// --- Recovery release ---
+
+	/** Arm the release timer; called when a hit window closes. */
+	void ScheduleRecoveryRelease();
+
+	/** Drop a pending release: a new combo section started, or the ability ended on its own. */
+	void CancelRecoveryRelease();
+
+	/** End the ability so movement and the next attack are no longer held back. */
+	void ReleaseRecovery();
+
+	/** Drives ReleaseRecovery. Cleared whenever the montage moves on to another section. */
+	FTimerHandle RecoveryReleaseTimer;
 
 	// --- Lunge ---
 

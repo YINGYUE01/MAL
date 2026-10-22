@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "MVVMViewModelBase.h"
+#include "Styling/SlateColor.h"
+#include "UI/MALDamageNumberTypes.h"
 #include "MALDamageNumberViewModel.generated.h"
 
 /**
@@ -48,6 +50,25 @@ public:
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "MAL|UI|Damage")
 	bool bKillingBlow = false;
 
+	/**
+	 * Colour for this hit, already resolved from the widget's palette.
+	 *
+	 * Typed as FSlateColor rather than FLinearColor so a TextBlock's ColorAndOpacity binds
+	 * straight to it; an FLinearColor source would need a conversion node in every widget.
+	 */
+	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "MAL|UI|Damage")
+	FSlateColor DamageColor;
+
+	/**
+	 * Hand the view's authored palette over. Call before SetDamage so the colour resolved for the
+	 * first hit is already the right one.
+	 */
+	void SetColorPalette(const FMALDamageNumberColors& InColors);
+
 	/** Overwrite every field for a new hit. Called when the widget is taken out of the pool. */
 	void SetDamage(float InAmount, bool bInCritical, bool bInMagic, bool bInKillingBlow);
+
+private:
+	/** Copy of the owning widget's palette; every SetDamage resolves against it. */
+	FMALDamageNumberColors Colors;
 };
