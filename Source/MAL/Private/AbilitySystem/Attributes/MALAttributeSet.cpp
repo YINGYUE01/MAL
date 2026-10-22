@@ -79,6 +79,7 @@ UMALAttributeSet::UMALAttributeSet()
 	InitCritChance(8.0f);
 	InitCritDamage(150.0f);
 	InitAttackSpeed(1.2f);
+	InitDamageBonus(0.0f);
 
 	// ========== Standalone ==========
 	InitHealth(350.0f);
@@ -114,6 +115,7 @@ void UMALAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, CritChance, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, CritDamage, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, AttackSpeed, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, DamageBonus, COND_None, REPNOTIFY_Always);
 
 	// Standalone
 	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Health, COND_None, REPNOTIFY_Always);
@@ -213,6 +215,11 @@ void UMALAttributeSet::OnRep_AttackSpeed(const FGameplayAttributeData& OldAttack
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, AttackSpeed, OldAttackSpeed);
 }
 
+void UMALAttributeSet::OnRep_DamageBonus(const FGameplayAttributeData& OldDamageBonus)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, DamageBonus, OldDamageBonus);
+}
+
 void UMALAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALAttributeSet, Health, OldHealth);
@@ -268,6 +275,12 @@ void UMALAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, f
 	else if (Attribute == GetAttackSpeedAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.1f, 5.0f);
+	}
+	// ---------- Secondary: 伤害加成 -90% ~ +500% ----------
+	// 下限挡住 -100% 的永久免伤叠层，上限只是防止配置错误把曲线拉爆。
+	else if (Attribute == GetDamageBonusAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, -90.0f, 500.0f);
 	}
 	// ---------- Meta: 伤害不能为负 ----------
 	else if (Attribute == GetDamageAttribute())

@@ -20,6 +20,9 @@ public class MAL : ModuleRules
 			"UMG",
 			"ModelViewViewModel",
 			"FieldNotification",
+			// UNiagaraSystem is exposed on a public cue property, so the module has to be a
+			// public dependency for the reflected type to resolve.
+			"Niagara",
 			// FSlateColor is exposed on a public view model property (damage number colour),
 			// so its module has to be a public dependency, not a private one.
 			"SlateCore"

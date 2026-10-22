@@ -29,6 +29,8 @@ void UMALGameplayTags::InitializeNativeTags()
 	Status_Attacking = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Attacking")), TEXT("Entity is performing an attack"));
 	Status_Defending = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Defending")), TEXT("Entity is defending"));
 	Status_Dashing = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Dashing")), TEXT("Entity is dashing"));
+	Status_Casting = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Casting")), TEXT("Entity is casting and cannot move"));
+	Status_Buff_DamageUp = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Buff.DamageUp")), TEXT("Entity is under a damage-boosting buff"));
 
 	// Event Tags
 	Event_Hit = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.Hit")), TEXT("Entity was hit or damaged"));
@@ -40,6 +42,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	Data_Health = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Data.Health")), TEXT("Health attribute"));
 	Data_Shield = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Data.Shield")), TEXT("Shield attribute"));
 	Data_Damage = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Data.Damage")), TEXT("Damage attribute"));
+	Data_DamageBonus = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Data.DamageBonus")), TEXT("Damage bonus percentage carried by buff GEs"));
 
 	// Damage Type Tags
 	Damage_Type_Physical = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Damage.Type.Physical")), TEXT("Physical damage channel"));
@@ -49,6 +52,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	Ability_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Attack")), TEXT("Attack ability"));
 	Ability_Defend = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Defend")), TEXT("Defend ability"));
 	Ability_Dash = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Dash")), TEXT("Dash ability"));
+	Ability_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Buff")), TEXT("Self-buff ability"));
 
 	// Input Tags
 	Input_Move = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Move")), TEXT("Move input"));
@@ -57,7 +61,11 @@ void UMALGameplayTags::InitializeNativeTags()
 	Input_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Attack")), TEXT("Attack input"));
 	Input_Defend = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Defend")), TEXT("Defend input"));
 	Input_Dash = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Dash")), TEXT("Dash input"));
+	Input_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Buff")), TEXT("Buff input"));
 	Input_AbilityActivated = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.AbilityActivated")), TEXT("Ability activated - used by ASC for input forwarding routing"));
+
+	// Gameplay Cue Tags
+	GameplayCue_Buff_DamageUp = TagManager.AddNativeGameplayTag(FName(TEXT("GameplayCue.Buff.DamageUp")), TEXT("Looping aura shown while the damage buff is active"));
 
 	// Primary Attribute Tags
 	Attribute_Primary_Vigor = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Attribute.Primary.Vigor")), TEXT("Vigor - affects health and regen"));

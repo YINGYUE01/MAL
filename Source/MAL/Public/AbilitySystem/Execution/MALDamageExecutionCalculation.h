@@ -12,12 +12,14 @@
  * 伤害结算执行类（物理/魔法双通道 + 暴击）。
  *
  * 公式:
- *   Base    = SetByCaller(MAL.Data.Damage)          // 技能侧算好的基础伤害（含等级/连招加成）
- *   Attack  = 物理: PhysicalAttack / 魔法: MagicAttack      (Source)
- *   Defense = 物理: PhysicalDefense / 魔法: MagicDefense    (Target)
- *   Damage  = Base × (1 + Attack / AttackScalingDivisor)
- *                   × (DefenseScalingConstant / (DefenseScalingConstant + Defense))
- *   Crit    = Roll[0, 100) < CritChance → Damage × CritDamage / 100
+ *   Base        = SetByCaller(MAL.Data.Damage)          // 技能侧算好的基础伤害（含等级/连招加成）
+ *   Attack      = 物理: PhysicalAttack / 魔法: MagicAttack      (Source)
+ *   Defense     = 物理: PhysicalDefense / 魔法: MagicDefense    (Target)
+ *   DamageBonus = 伤害加成百分比 (Source)，由 Buff/Debuff 的 GE 修改
+ *   Damage      = Base × (1 + Attack / AttackScalingDivisor)
+ *                       × (DefenseScalingConstant / (DefenseScalingConstant + Defense))
+ *                       × (1 + DamageBonus / 100)
+ *   Crit        = Roll[0, 100) < CritChance → Damage × CritDamage / 100
  *
  * 通道由 GE spec 上的 MAL.Damage.Type.Magic 标签决定（动态标签或 GE 资产标签均可），
  * 缺省按物理结算。暴击结果回写 FMALGameplayEffectContext。

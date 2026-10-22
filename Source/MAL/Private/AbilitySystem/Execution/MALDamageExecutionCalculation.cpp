@@ -20,6 +20,7 @@ namespace
 		DECLARE_ATTRIBUTE_CAPTUREDEF(MagicAttack);
 		DECLARE_ATTRIBUTE_CAPTUREDEF(CritChance);
 		DECLARE_ATTRIBUTE_CAPTUREDEF(CritDamage);
+		DECLARE_ATTRIBUTE_CAPTUREDEF(DamageBonus);
 		DECLARE_ATTRIBUTE_CAPTUREDEF(PhysicalDefense);
 		DECLARE_ATTRIBUTE_CAPTUREDEF(MagicDefense);
 
@@ -30,6 +31,8 @@ namespace
 			DEFINE_ATTRIBUTE_CAPTUREDEF(UMALAttributeSet, MagicAttack, Source, false);
 			DEFINE_ATTRIBUTE_CAPTUREDEF(UMALAttributeSet, CritChance, Source, false);
 			DEFINE_ATTRIBUTE_CAPTUREDEF(UMALAttributeSet, CritDamage, Source, false);
+			// Temporary buff/debuff multiplier, read from the aggregated attribute at execution time.
+			DEFINE_ATTRIBUTE_CAPTUREDEF(UMALAttributeSet, DamageBonus, Source, false);
 			DEFINE_ATTRIBUTE_CAPTUREDEF(UMALAttributeSet, PhysicalDefense, Target, false);
 			DEFINE_ATTRIBUTE_CAPTUREDEF(UMALAttributeSet, MagicDefense, Target, false);
 		}
@@ -50,6 +53,7 @@ UMALDamageExecutionCalculation::UMALDamageExecutionCalculation()
 	RelevantAttributesToCapture.Add(DamageStatics().MagicAttackDef);
 	RelevantAttributesToCapture.Add(DamageStatics().CritChanceDef);
 	RelevantAttributesToCapture.Add(DamageStatics().CritDamageDef);
+	RelevantAttributesToCapture.Add(DamageStatics().DamageBonusDef);
 	RelevantAttributesToCapture.Add(DamageStatics().PhysicalDefenseDef);
 	RelevantAttributesToCapture.Add(DamageStatics().MagicDefenseDef);
 }
@@ -107,11 +111,13 @@ void UMALDamageExecutionCalculation::Execute_Implementation(
 	float Defense = 0.f;
 	float CritChance = 0.f;
 	float CritDamage = 0.f;
+	float DamageBonus = 0.f;
 
 	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(AttackDef, EvaluateParameters, Attack);
 	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(DefenseDef, EvaluateParameters, Defense);
 	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(DamageStatics().CritChanceDef, EvaluateParameters, CritChance);
 	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(DamageStatics().CritDamageDef, EvaluateParameters, CritDamage);
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(DamageStatics().DamageBonusDef, EvaluateParameters, DamageBonus);
 
 	// ---- 2. Base damage comes from the ability via SetByCaller ---------------------
 	const float BaseDamage = Spec.GetSetByCallerMagnitude(UMALGameplayTags::Get()->Data_Damage, /*WarnIfNotFound*/ false, 0.f);
@@ -130,6 +136,11 @@ void UMALDamageExecutionCalculation::Execute_Implementation(
 	const float AttackScale = 1.f + Attack / FMath::Max(AttackScalingDivisor, KINDA_SMALL_NUMBER);
 	const float DefenseScale = DefenseScalingConstant / (DefenseScalingConstant + Defense);
 
+	// ---- 3b. Temporary buff/debuff multiplier ------------------------------------
+	// DamageBonus is a percentage (30 => +30%). Clamped at -90 by the attribute set, but
+	// guard here too so a malformed GE cannot flip the sign of the final damage.
+	const float DamageBonusScale = FMath::Max(0.f, 1.f + DamageBonus / 100.f);
+
 	// ---- 4. Critical roll (server authoritative) ----------------------------------
 	bool bCriticalHit = false;
 	if (bAllowCriticalHits && CritChance > 0.f)
@@ -137,7 +148,7 @@ void UMALDamageExecutionCalculation::Execute_Implementation(
 		bCriticalHit = FMath::FRandRange(0.f, 100.f) < CritChance;
 	}
 
-	float FinalDamage = BaseDamage * AttackScale * DefenseScale;
+	float FinalDamage = BaseDamage * AttackScale * DefenseScale * DamageBonusScale;
 	if (bCriticalHit)
 	{
 		FinalDamage *= FMath::Max(0.f, CritDamage) / 100.f;
@@ -157,11 +168,11 @@ void UMALDamageExecutionCalculation::Execute_Implementation(
 	}
 
 	UE_LOG(LogTemp, Verbose,
-		TEXT("MALDamageExecution: %s -> %s | channel=%s base=%.1f atk=%.1f def=%.1f crit=%s final=%.1f"),
+		TEXT("MALDamageExecution: %s -> %s | channel=%s base=%.1f atk=%.1f def=%.1f bonus=%.0f%% crit=%s final=%.1f"),
 		*GetNameSafe(Spec.GetContext().GetInstigator()),
 		*GetNameSafe(Spec.GetContext().GetEffectCauser()),
 		bMagicDamage ? TEXT("Magic") : TEXT("Physical"),
-		BaseDamage, Attack, Defense,
+		BaseDamage, Attack, Defense, DamageBonus,
 		bCriticalHit ? TEXT("yes") : TEXT("no"),
 		FinalDamage);
 	// Damage is a Meta attribute: PostGameplayEffectExecute transfers it into Health

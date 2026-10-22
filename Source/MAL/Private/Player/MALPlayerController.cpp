@@ -261,9 +261,12 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 		MALASC = Cast<UMALAbilitySystemComponent>(MALPS->GetAbilitySystemComponent());
 	}
 
-	// While an ability owning Status.Attacking is active, lock Move/Jump so the character
-	// commits to the action (the root motion lunge drives movement, preventing foot-sliding).
-	const bool bMovementLocked = MALASC && MALASC->HasMatchingGameplayTag(GameplayTags->Status_Attacking);
+	// While an ability that commits the character to an animation (attack, cast) is active,
+	// lock Move/Jump. Without it the character keeps sliding under its own velocity while the
+	// montage plays in place.
+	const bool bMovementLocked = MALASC
+		&& (MALASC->HasMatchingGameplayTag(GameplayTags->Status_Attacking)
+			|| MALASC->HasMatchingGameplayTag(GameplayTags->Status_Casting));
 
 	if (InputTag == GameplayTags->Input_Move)
 	{

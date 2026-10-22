@@ -53,6 +53,14 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
 	FGameplayTag Status_Dashing;
 
+	/** Entity is casting an ability and cannot move */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
+	FGameplayTag Status_Casting;
+
+	/** Entity is under a damage-boosting buff */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
+	FGameplayTag Status_Buff_DamageUp;
+
 	// -----------------------------------------------------------------------------
 	// Event Tags - Represent events that can be triggered
 	// -----------------------------------------------------------------------------
@@ -89,6 +97,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Data")
 	FGameplayTag Data_Damage;
 
+	/** Damage bonus percentage carried by buff GEs through SetByCaller */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Data")
+	FGameplayTag Data_DamageBonus;
+
 	// -----------------------------------------------------------------------------
 	// Damage Type Tags - Select the attack/defense channel an execution uses
 	// -----------------------------------------------------------------------------
@@ -116,6 +128,10 @@ public:
 	/** Dash ability */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
 	FGameplayTag Ability_Dash;
+
+	/** Self-buff ability */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
+	FGameplayTag Ability_Buff;
 
 	// -----------------------------------------------------------------------------
 	// Input Tags - Represent input actions
@@ -145,9 +161,21 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
 	FGameplayTag Input_Dash;
 
+	/** Buff input */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
+	FGameplayTag Input_Buff;
+
 	/** Ability activated - used by ASC for input forwarding routing */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
 	FGameplayTag Input_AbilityActivated;
+
+	// -----------------------------------------------------------------------------
+	// Gameplay Cue Tags - The GameplayCue root is required for the cue manager to route them
+	// -----------------------------------------------------------------------------
+
+	/** Looping aura shown while the damage buff is active */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|GameplayCue")
+	FGameplayTag GameplayCue_Buff_DamageUp;
 
 	// -----------------------------------------------------------------------------
 	// Attribute Tags - Primary (base stats that drive secondary calculations)

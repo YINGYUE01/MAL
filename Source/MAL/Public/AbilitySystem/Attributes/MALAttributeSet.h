@@ -180,6 +180,16 @@ public:
 	UFUNCTION()
 	virtual void OnRep_AttackSpeed(const FGameplayAttributeData& OldAttackSpeed);
 
+	// 伤害加成百分比（0 = 无加成）。
+	// 不参与 Primary -> Secondary 的派生计算：只有 Buff / Debuff 的 GE 会修改它，
+	// 伤害 Execution 在最终乘区读取，因此可以随时间自然叠加和到期回落。
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_DamageBonus, Category = "Secondary")
+	FGameplayAttributeData DamageBonus;
+	ATTRIBUTE_ACCESSORS(UMALAttributeSet, DamageBonus)
+
+	UFUNCTION()
+	virtual void OnRep_DamageBonus(const FGameplayAttributeData& OldDamageBonus);
+
 	// ========== Standalone ==========
 
 	// 当前生命值，运行时 Clamp 到 [0, MaxHealth]
