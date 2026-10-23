@@ -172,6 +172,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|HitFeedback")
 	TSubclassOf<UCameraShakeBase> HitCameraShakeClass;
 
+	/**
+	 * Cue fired at the impact point the moment a weapon hit is confirmed.
+	 *
+	 * This is the hook for hit audio. OnWeaponHit only runs on the server, so a sound played
+	 * there would never reach a client; the cue system is what carries it across. Point this at
+	 * a GameplayCueNotify_Burst Blueprint that owns the sound (and any impact VFX).
+	 *
+	 * Leave it empty to disable impact feedback.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|HitFeedback")
+	FGameplayTag HitImpactCueTag;
+
 	// --- Hit event (GameplayEvent decoupling) ---
 
 	/** Called when the montage fires MAL.Event.Hit via SendGameplayEventToActor */

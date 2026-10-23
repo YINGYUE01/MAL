@@ -67,6 +67,10 @@ UMALAbility_Attack::UMALAbility_Attack()
 	// Default hit feedback; designers can override the camera shake class in BP.
 	HitCameraShakeClass = UMALHitCameraShake::StaticClass();
 
+	// The impact cue is resolved by tag, so the sound itself lives entirely in a
+	// GameplayCueNotify_Burst Blueprint rather than in this ability.
+	HitImpactCueTag = Tags->GameplayCue_Hit_Impact;
+
 	// Default 4-step combo section names (override in Blueprint to match the montage).
 	ComboSections = { FName("Combo1"), FName("Combo2"), FName("Combo3"), FName("Combo4") };
 }
@@ -597,6 +601,21 @@ void UMALAbility_Attack::OnWeaponHit(const FMALHitResult& HitResult)
 		{
 			PC->ClientOnHitLanded(HitStopDuration, HitCameraShakeClass);
 		}
+	}
+
+	// Impact feedback at the point of contact. Nothing here plays locally: this code only runs
+	// on the server, so the cue is what replicates the effect out to the clients.
+	if (HitImpactCueTag.IsValid())
+	{
+		FGameplayCueParameters CueParams;
+		CueParams.Location = HitResult.HitLocation;
+		CueParams.Instigator = Avatar;
+		CueParams.EffectCauser = Avatar;
+		CueParams.SourceObject = this;
+		CueParams.RawMagnitude = Damage;
+		CueParams.AbilityLevel = GetAbilityLevel();
+
+		SourceASC->ExecuteGameplayCue(HitImpactCueTag, CueParams);
 	}
 
 	// Broadcast WeaponHit event for future listeners (UI, hit-stop, audio, ...)

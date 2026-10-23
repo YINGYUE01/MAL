@@ -177,6 +177,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|GameplayCue")
 	FGameplayTag GameplayCue_Buff_DamageUp;
 
+	/** Impact feedback fired where a melee hit lands (sound, particles, decals) */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|GameplayCue")
+	FGameplayTag GameplayCue_Hit_Impact;
+
 	// -----------------------------------------------------------------------------
 	// Attribute Tags - Primary (base stats that drive secondary calculations)
 	// -----------------------------------------------------------------------------
