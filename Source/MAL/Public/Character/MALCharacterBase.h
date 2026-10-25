@@ -108,6 +108,27 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Death", meta = (ClampMin = "0.0"))
 	float CorpseLifeSpan = 0.0f;
 
+	/**
+	 * Collision profile applied to the mesh on death, so a body that starts simulating physics can
+	 * actually collide with the world.
+	 *
+	 * Character meshes are authored on the CharacterMesh profile, which is query-only: a ragdoll
+	 * built from it has no physics collision and drops straight through the floor. Ragdoll is the
+	 * engine profile with the PhysicsBody object type, which the physics scene resolves. None
+	 * leaves whatever profile the mesh already has.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Death")
+	FName CorpseMeshCollisionProfile = TEXT("Ragdoll");
+
+	/**
+	 * Whether the corpse capsule keeps blocking the world.
+	 *
+	 * Off by default. The capsule sits exactly where the character died and, left on its character
+	 * profile, becomes an invisible obstacle: the player walks into a body that is no longer there.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Death")
+	bool bKeepCapsuleCollisionOnDeath = false;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttribute;
 

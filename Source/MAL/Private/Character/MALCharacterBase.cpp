@@ -11,6 +11,8 @@
 #include "Data/MALClassDefinition.h"
 #include "Data/MALAbilitySet.h"
 #include "Engine/World.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameplayEffect.h"
 #include "AIController.h"
 #include "BrainComponent.h"
@@ -375,6 +377,41 @@ void AMALCharacterBase::ApplyDeathState(AActor* Killer)
 		// corpse would resume falling or sliding as soon as something pushes it.
 		Movement->StopMovementImmediately();
 		Movement->DisableMovement();
+	}
+
+	// A corpse is scenery, not an obstacle. Movement is already off, so the character does not
+	// need its capsule to hold position any more, and leaving it on the character profile makes
+	// the player walk into an invisible body at the exact spot the enemy died.
+	if (!bKeepCapsuleCollisionOnDeath)
+	{
+		if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+		{
+			Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+	}
+
+	// Death is also where a blueprint turns the mesh into a ragdoll, and this runs before the
+	// blueprint hook below. Character meshes sit on the query-only CharacterMesh profile, so a
+	// ragdoll built from them has nothing for the floor to push against and drops out of the
+	// level. Swapping the profile here means whatever enables physics in OnDeath gets a body the
+	// physics scene can resolve, regardless of what each character blueprint remembers to do.
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		if (!MeshComp->GetPhysicsAsset())
+		{
+			// Without a physics asset SetSimulatePhysics is a no-op, so the corpse just stops in
+			// its death pose. Worth a warning: the intent was clearly a limp body.
+			UE_LOG(LogTemp, Warning, TEXT("%s: mesh has no physics asset, the corpse cannot go limp"), *GetName());
+		}
+		else if (!CorpseMeshCollisionProfile.IsNone())
+		{
+			MeshComp->SetCollisionProfileName(CorpseMeshCollisionProfile);
+
+			// Limbs follow the corpse, not the camera. Ragdoll bodies block traces by default, and a
+			// third-person boom that traces against the body lying next to it snaps the view in on
+			// every kill.
+			MeshComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+		}
 	}
 
 	// Only the server may own the destroy timer: a client that destroys its own copy would
