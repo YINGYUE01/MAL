@@ -29,6 +29,9 @@ Thumbs.db
 Content/ParagonKwang/
 Content/SwordTrailVFX/
 
+# ---- 素材生成脚本的下载缓存（可随时重建）----
+Scripts/.iconcache/
+
 # ---- 其他 ----
 __pycache__/
 *.pyc

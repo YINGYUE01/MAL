@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Player/MALPlayerController.h"
+#include "Combat/MALHitFeedbackComponent.h"
 #include "Input/MALInputConfig.h"
 #include "Input/MALInputComponent.h"
 #include "InputAction.h"
@@ -12,17 +13,15 @@
 #include "Components/MALAbilitySystemComponent.h"
 #include "Player/MALPlayerState.h"
 #include "Camera/PlayerCameraManager.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "Animation/AnimInstance.h"
-#include "Animation/AnimMontage.h"
-#include "TimerManager.h"
-#include "Engine/World.h"
 #include "Engine/LocalPlayer.h"
 #include "UI/Framework/MALDamageNumberSubsystem.h"
 #include "UI/Framework/MALUISubsystem.h"
 
 AMALPlayerController::AMALPlayerController()
 {
+	// Hit-stop is controller-owned presentation: one per player, independent of the pawn
+	// so a respawn does not orphan an in-flight freeze.
+	HitFeedbackComponent = CreateDefaultSubobject<UMALHitFeedbackComponent>(TEXT("HitFeedbackComponent"));
 }
 
 void AMALPlayerController::ClientOnHitLanded_Implementation(float HitStopDuration, TSubclassOf<UCameraShakeBase> ShakeClass)
@@ -32,7 +31,10 @@ void AMALPlayerController::ClientOnHitLanded_Implementation(float HitStopDuratio
 		PlayerCameraManager->StartCameraShake(ShakeClass, 1.0f);
 	}
 
-	BeginHitStop(HitStopDuration);
+	if (HitFeedbackComponent)
+	{
+		HitFeedbackComponent->BeginHitStop(HitStopDuration);
+	}
 }
 
 void AMALPlayerController::ClientShowDamageNumber_Implementation(float Amount, bool bCritical, bool bMagic, bool bKillingBlow, FVector WorldLocation)
@@ -41,113 +43,6 @@ void AMALPlayerController::ClientShowDamageNumber_Implementation(float Amount, b
 	{
 		DamageNumberSubsystem->ShowDamageNumber(Amount, bCritical, bMagic, bKillingBlow, WorldLocation);
 	}
-}
-
-void AMALPlayerController::RouteDamageNumber(AActor* Victim, AActor* Instigator, const FVector& WorldLocation,
-	float Amount, bool bCritical, bool bMagic, bool bKillingBlow)
-{
-	if (!Victim || Amount <= 0.0f)
-	{
-		return;
-	}
-
-	// Both roles can belong to the same client (self damage), and a hit is usually relevant to two
-	// different ones, so deduplicate before sending.
-	TSet<AMALPlayerController*> Recipients;
-
-	auto NotifyOwner = [&Recipients, &WorldLocation, Amount, bCritical, bMagic, bKillingBlow](AActor* Actor)
-	{
-		// The controller hangs off the pawn, not the PlayerState, and an AI-driven pawn simply
-		// fails the cast: enemies have nobody watching their own numbers.
-		const APawn* Pawn = Cast<APawn>(Actor);
-		if (!Pawn)
-		{
-			return;
-		}
-
-		AMALPlayerController* PlayerController = Cast<AMALPlayerController>(Pawn->GetController());
-		if (!PlayerController || Recipients.Contains(PlayerController))
-		{
-			return;
-		}
-
-		Recipients.Add(PlayerController);
-		PlayerController->ClientShowDamageNumber(Amount, bCritical, bMagic, bKillingBlow, WorldLocation);
-	};
-
-	NotifyOwner(Victim);
-	NotifyOwner(Instigator);
-}
-
-void AMALPlayerController::BeginHitStop(float Duration)
-{
-	if (Duration <= 0.0f)
-	{
-		return;
-	}
-
-	if (!bHitStopActive)
-	{
-		bHitStopActive = true;
-
-		if (ACharacter* ControlledCharacter = Cast<ACharacter>(GetPawn()))
-		{
-			HitStopCharacter = ControlledCharacter;
-			HitStopRestoreTimeDilation = ControlledCharacter->CustomTimeDilation;
-
-			// Freeze movement/root motion locally for the hit-stop.
-			ControlledCharacter->CustomTimeDilation = 0.0f;
-
-			if (USkeletalMeshComponent* Mesh = ControlledCharacter->GetMesh())
-			{
-				if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
-				{
-					if (UAnimMontage* Montage = AnimInstance->GetCurrentActiveMontage())
-					{
-						HitStopAnimInstance = AnimInstance;
-						HitStopMontage = Montage;
-						HitStopRestoreRate = AnimInstance->Montage_GetPlayRate(Montage);
-						if (HitStopRestoreRate <= 0.0f)
-						{
-							HitStopRestoreRate = 1.0f;
-						}
-
-						// Pause the attack montage itself; movement is frozen by time dilation.
-						AnimInstance->Montage_SetPlayRate(Montage, 0.0f);
-					}
-				}
-			}
-		}
-	}
-
-	// Overlapping hits extend the stop instead of restoring the montage too early.
-	GetWorldTimerManager().ClearTimer(HitStopTimer);
-	GetWorldTimerManager().SetTimer(HitStopTimer, this, &AMALPlayerController::EndHitStop, Duration, false);
-}
-
-void AMALPlayerController::EndHitStop()
-{
-	bHitStopActive = false;
-
-	if (ACharacter* ControlledCharacter = HitStopCharacter.Get())
-	{
-		ControlledCharacter->CustomTimeDilation = HitStopRestoreTimeDilation;
-	}
-
-	if (UAnimInstance* AnimInstance = HitStopAnimInstance.Get())
-	{
-		if (UAnimMontage* Montage = HitStopMontage.Get())
-		{
-			if (AnimInstance->Montage_IsActive(Montage))
-			{
-				AnimInstance->Montage_SetPlayRate(Montage, HitStopRestoreRate);
-			}
-		}
-	}
-
-	HitStopCharacter = nullptr;
-	HitStopAnimInstance = nullptr;
-	HitStopMontage = nullptr;
 }
 
 void AMALPlayerController::BeginPlay()

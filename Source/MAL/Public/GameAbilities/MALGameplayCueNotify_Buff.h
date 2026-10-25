@@ -12,14 +12,15 @@ class UNiagaraComponent;
 /**
  * AMALGameplayCueNotify_Buff
  *
- * 通用"持续型增益特效" cue：OnActive 在目标的 SkeletalMesh 上生成 Niagara 系统并挂在
- * socket 上，OnRemove 立即销毁组件。
+ * Generic "persistent buff effect" cue: OnActive spawns a Niagara system on the target's skeletal
+ * mesh and attaches it to a socket, OnRemove destroys the component immediately.
  *
- * 生命周期完全由 GameplayEffect 决定。GE 到期、被驱散或目标死亡都会走 OnRemove，
- * 所以特效不可能比 buff 多活一帧，也不需要技能侧自己开定时器去关。
+ * Its lifetime belongs entirely to the GameplayEffect. Expiry, dispels and the target's death all
+ * reach OnRemove, so the visual can never outlive the buff by a frame, and no ability-side timer
+ * is needed to switch it off.
  *
- * 蓝图子类放在 GameplayCueNotifyPaths（本项目为 /Game）下即可被 cue manager 扫描到；
- * 在子类里填 AuraEffect 并指定 socket。
+ * Blueprint subclasses placed under the GameplayCueNotifyPaths (here: /Game) are picked up by the
+ * cue manager; set AuraEffect and the socket on the subclass.
  */
 UCLASS()
 class MAL_API AMALGameplayCueNotify_Buff : public AGameplayCueNotify_Actor

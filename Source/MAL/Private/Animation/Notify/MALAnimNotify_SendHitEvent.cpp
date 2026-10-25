@@ -35,7 +35,7 @@ void UMALAnimNotify_SendHitEvent::Notify(USkeletalMeshComponent* MeshComp, UAnim
 	Payload.Instigator = Owner;
 	Payload.EventTag = Tag;
 
-	// The ability listens for this via UAbilityTask_WaitGameplayEvent (server-authoritative
-	// hit resolution can be added there once enemies/damage exist).
+	// Generic impact-frame hook. Melee hits are resolved by the weapon collision window
+	// (UMALWeaponComponent), so only abilities waiting on MAL.Event.Hit see this.
 	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Owner, Tag, Payload);
 }

@@ -16,14 +16,15 @@
 /**
  * UMALAttributeSet
  *
- * 分级属性体系：
- *   - Primary    : 玩家基础属性（可通过升级 / 装备直接修改）
- *   - Secondary  : 由 Primary 派生的战斗 / 资源属性
- *   - Standalone : 运行时的资源当前值（Health / Mana / Stamina），独立于 Max* 属性
- *   - Meta       : 只在一次 GameplayEffect 执行内存在的中间值（Damage），不复制
+ * Layered attribute model:
+ *   - Primary    : innate character stats, modified directly by level-ups and equipment
+ *   - Secondary  : combat and resource stats derived from the Primary ones
+ *   - Standalone : current resource values (Health / Mana / Stamina), independent of the Max*
+ *   - Meta       : transient within one GameplayEffect execution (Damage), never replicated
  *
- * 所有 Primary/Secondary/Standalone 属性都带 ReplicatedUsing，服务器上的修改会同步到客户端；
- * 客户端收到后通过 GAMEPLAYATTRIBUTE_REPNOTIFY 更新 Aggregator，保证 CurrentValue 正确。
+ * Every Primary/Secondary/Standalone attribute uses ReplicatedUsing, so server-side changes reach
+ * clients, and the client refreshes its aggregator through GAMEPLAYATTRIBUTE_REPNOTIFY to keep
+ * CurrentValue correct.
  */
 UCLASS()
 class MAL_API UMALAttributeSet : public UAttributeSet
@@ -164,7 +165,7 @@ public:
 	UFUNCTION()
 	virtual void OnRep_CritChance(const FGameplayAttributeData& OldCritChance);
 
-	// Derived from Dexterity: 150 + Dexterity * 1.0  (percent, 暴击伤害倍率)
+	// Derived from Dexterity: 150 + Dexterity * 1.0  (percent, crit damage multiplier)
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_CritDamage, Category = "Secondary")
 	FGameplayAttributeData CritDamage;
 	ATTRIBUTE_ACCESSORS(UMALAttributeSet, CritDamage)
@@ -172,7 +173,7 @@ public:
 	UFUNCTION()
 	virtual void OnRep_CritDamage(const FGameplayAttributeData& OldCritDamage);
 
-	// Derived from Dexterity: 1.0 + Dexterity * 0.02  (攻击速度倍率)
+	// Derived from Dexterity: 1.0 + Dexterity * 0.02  (attack speed multiplier)
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_AttackSpeed, Category = "Secondary")
 	FGameplayAttributeData AttackSpeed;
 	ATTRIBUTE_ACCESSORS(UMALAttributeSet, AttackSpeed)
@@ -180,9 +181,9 @@ public:
 	UFUNCTION()
 	virtual void OnRep_AttackSpeed(const FGameplayAttributeData& OldAttackSpeed);
 
-	// 伤害加成百分比（0 = 无加成）。
-	// 不参与 Primary -> Secondary 的派生计算：只有 Buff / Debuff 的 GE 会修改它，
-	// 伤害 Execution 在最终乘区读取，因此可以随时间自然叠加和到期回落。
+	// Damage bonus in percent (0 = no bonus).
+	// Kept out of the Primary -> Secondary derivation: only buff/debuff GEs touch it, and the
+	// damage execution reads it in the final multiplier, so it can build up and expire over time.
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_DamageBonus, Category = "Secondary")
 	FGameplayAttributeData DamageBonus;
 	ATTRIBUTE_ACCESSORS(UMALAttributeSet, DamageBonus)
@@ -192,7 +193,7 @@ public:
 
 	// ========== Standalone ==========
 
-	// 当前生命值，运行时 Clamp 到 [0, MaxHealth]
+	// Current health, clamped to [0, MaxHealth] at runtime
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Health, Category = "Standalone")
 	FGameplayAttributeData Health;
 	ATTRIBUTE_ACCESSORS(UMALAttributeSet, Health)
@@ -200,7 +201,7 @@ public:
 	UFUNCTION()
 	virtual void OnRep_Health(const FGameplayAttributeData& OldHealth);
 
-	// 当前法力值，运行时 Clamp 到 [0, MaxMana]
+	// Current mana, clamped to [0, MaxMana] at runtime
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Mana, Category = "Standalone")
 	FGameplayAttributeData Mana;
 	ATTRIBUTE_ACCESSORS(UMALAttributeSet, Mana)
@@ -208,7 +209,7 @@ public:
 	UFUNCTION()
 	virtual void OnRep_Mana(const FGameplayAttributeData& OldMana);
 
-	// 当前耐力值，运行时 Clamp 到 [0, MaxStamina]
+	// Current stamina, clamped to [0, MaxStamina] at runtime
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Stamina, Category = "Standalone")
 	FGameplayAttributeData Stamina;
 	ATTRIBUTE_ACCESSORS(UMALAttributeSet, Stamina)
@@ -219,8 +220,9 @@ public:
 	// ========== Meta ==========
 
 	/**
-	 * 伤害中间值：由 Damage GameplayEffect 写入，PostGameplayEffectExecute 消费后清零。
-	 * 不复制（只在服务器执行），避免客户端看到未处理的伤害值。
+	 * Intermediate damage value: written by the damage GameplayEffect and reset by
+	 * PostGameplayEffectExecute. Not replicated (it only exists on the server), so clients never
+	 * see an unprocessed damage value.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Meta")
 	FGameplayAttributeData Damage;

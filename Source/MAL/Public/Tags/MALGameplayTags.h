@@ -134,6 +134,24 @@ public:
 	FGameplayTag Ability_Buff;
 
 	// -----------------------------------------------------------------------------
+	// Cooldown Tags - Granted by a cooldown GameplayEffect for its whole duration
+	// -----------------------------------------------------------------------------
+
+	/**
+	 * Attack is on cooldown.
+	 *
+	 * The tag is what makes the cooldown observable: UGameplayAbility::GetCooldownTimeRemaining
+	 * reads the ability's cooldown tags back off the owner, so a cooldown effect that grants no
+	 * tags reports zero remaining time and the HUD would never see the sweep.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown")
+	FGameplayTag Cooldown_Attack;
+
+	/** Self-buff is on cooldown; same contract as Cooldown_Attack. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown")
+	FGameplayTag Cooldown_Buff;
+
+	// -----------------------------------------------------------------------------
 	// Input Tags - Represent input actions
 	// -----------------------------------------------------------------------------
 	

@@ -10,9 +10,10 @@
 #include "MALAbility_Attack.generated.h"
 
 class UAnimMontage;
-class UPrimitiveComponent;
 class UAbilityTask_ApplyRootMotionMoveToForce;
 class UCameraShakeBase;
+class UMALWeaponComponent;
+class UMALComboComponent;
 
 /**
  * UMALAbility_Attack
@@ -77,53 +78,24 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Lunge")
 	float LungeDuration = 0.3f;
 
-	// --- Combo runtime state (not serialized) ---
+	// --- Combo state (owned by UMALComboComponent) ---
 
-	/** Current combo step index (0-based into ComboSections) */
-	int32 ComboStep = 0;
-
-	/** True while the montage's combo window notify state is active */
-	bool bComboWindowOpen = false;
-
-	/** True if attack was pressed before the window opened; consumed when it opens */
-	bool bComboInputBuffered = false;
-
-	/** World time of the buffered press, used to expire stale inputs. */
-	double ComboInputBufferTime = 0.0;
-
-	// --- Combo input handling ---
-
-	/** Input hook: attack pressed while this ability is already active */
+	/** Input hook: attack pressed while this ability is already active (routes a combo press). */
 	virtual void OnInputPressed(const FInputActionValue& Value) override;
 
-	/** Route a combo press: advance if the window is open, otherwise buffer it */
-	void HandleComboInput();
+	/** Resolve the character's combo component (buffered input, step advancement, recovery). */
+	UMALComboComponent* GetComboComponent() const;
 
-	/** Jump to the next combo section (if any remain) */
-	void AdvanceCombo();
-
-	/** Consume buffered input when a combo window opens (only if still fresh) */
-	void TryConsumeBufferedInput();
-
-	/** Reset combo counters/flags (on activate and end) */
-	void ResetComboState();
+	/** ComboComponent callback: jump the montage to the new section. */
+	void OnComboAdvanced(int32 Step, FName Section);
 
 	/** Current step derived from the montage's active section (authoritative on both sides). */
 	int32 GetCurrentComboStepFromMontage() const;
 
 	// --- Recovery release ---
 
-	/** Arm the release timer; called when a hit window closes. */
-	void ScheduleRecoveryRelease();
-
-	/** Drop a pending release: a new combo section started, or the ability ended on its own. */
-	void CancelRecoveryRelease();
-
-	/** End the ability so movement and the next attack are no longer held back. */
+	/** ComboComponent callback: end the ability so movement and the next attack are free again. */
 	void ReleaseRecovery();
-
-	/** Drives ReleaseRecovery. Cleared whenever the montage moves on to another section. */
-	FTimerHandle RecoveryReleaseTimer;
 
 	// --- Lunge ---
 
@@ -140,11 +112,15 @@ protected:
 
 	// --- Weapon collision ---
 
-	/** The weapon collision component (cached during EnableWeaponCollision) */
-	TObjectPtr<UPrimitiveComponent> WeaponCollisionComp;
+	/** Resolve the character's weapon component (owns the hit window and the overlap binding). */
+	UMALWeaponComponent* GetWeaponComponent() const;
 
-	/** Actors already hit during the current collision window (prevents multi-hit per swing). */
-	TSet<AActor*> HitActorsThisSwing;
+	/**
+	 * True once this activation opened a hit window. Reset on activation and checked on end to
+	 * warn when the montage carries no opening notify: that swing silently cannot hit anything,
+	 * which is easy to mistake for a targeting or range problem.
+	 */
+	bool bHitWindowOpened = false;
 
 	/** Damage effect class to apply on weapon hit; null falls back to UMALDamageGameplayEffect. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Damage")
@@ -158,7 +134,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Damage")
 	float ComboDamageBonusPerStep = 0.15f;
 
-	/** Name of the weapon collision component to find on the character */
+	/** Name of the weapon collision component on the character (handed to UMALWeaponComponent). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Damage")
 	FName WeaponCollisionSocketName = TEXT("weapon_collision");
 
@@ -184,19 +160,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|HitFeedback")
 	FGameplayTag HitImpactCueTag;
 
-	// --- Hit event (GameplayEvent decoupling) ---
-
-	/** Called when the montage fires MAL.Event.Hit via SendGameplayEventToActor */
-	UFUNCTION()
-	void OnHitEventReceived(FGameplayEventData Payload);
-
-	/** Handle a weapon overlap hit: construct effect context and apply damage GE */
+	/** WeaponComponent hit callback: hand the resolved hit to the damage executor. */
 	void OnWeaponHit(const FMALHitResult& HitResult);
-
-	/** Overlap callback: construct hit result and route to OnWeaponHit */
-	UFUNCTION()
-	void OnWeaponOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 	// --- Montage callbacks ---
 

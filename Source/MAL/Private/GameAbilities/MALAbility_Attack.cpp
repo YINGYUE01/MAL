@@ -5,45 +5,19 @@
 
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Abilities/Tasks/AbilityTask_ApplyRootMotionMoveToForce.h"
-#include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
-#include "GameAbilities/MALDamageGameplayEffect.h"
+#include "Character/MALCharacterBase.h"
+#include "Combat/MALComboComponent.h"
+#include "Combat/MALDamageExecutor.h"
+#include "Combat/MALWeaponComponent.h"
 #include "GameAbilities/MALHitCameraShake.h"
-#include "Player/MALPlayerController.h"
-#include "AbilitySystem/Attributes/MALAttributeSet.h"
-#include "AbilitySystemGlobals.h"
-#include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
-#include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
 #include "Tags/MALGameplayTags.h"
 #include "Animation/AnimMontage.h"
-#include "Animation/AnimInstance.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "Components/PrimitiveComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/RootMotionSource.h"
-#include "GenericTeamAgentInterface.h"
-#include "Engine/World.h"
-#include "TimerManager.h"
-
-namespace
-{
-	/** True when both actors expose a team id and share the same non-neutral team. */
-	bool MALIsFriendly(AActor* A, AActor* B)
-	{
-		const IGenericTeamAgentInterface* TeamA = Cast<IGenericTeamAgentInterface>(A);
-		const IGenericTeamAgentInterface* TeamB = Cast<IGenericTeamAgentInterface>(B);
-		if (TeamA && TeamB)
-		{
-			const FGenericTeamId IdA = TeamA->GetGenericTeamId();
-			const FGenericTeamId IdB = TeamB->GetGenericTeamId();
-			return IdA != FGenericTeamId::NoTeam && IdA == IdB;
-		}
-		return false;
-	}
-}
 
 UMALAbility_Attack::UMALAbility_Attack()
 {
@@ -60,7 +34,7 @@ UMALAbility_Attack::UMALAbility_Attack()
 	// Tags applied during activation
 	ActivationOwnedTags.AddTag(Tags->Status_Attacking);
 
-	// Combo presses must reach the server so ComboStep stays in sync; the ASC mirrors
+	// Combo presses must reach the server so the step stays in sync; the ASC mirrors
 	// the engine's ServerSetInputPressed/Released when this flag is set.
 	bReplicateInputDirectly = true;
 
@@ -83,6 +57,10 @@ void UMALAbility_Attack::ActivateAbility(
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
+	// Abilities are instanced and reused, so a flag left over from the previous swing would hide
+	// a montage that never opens a window.
+	bHitWindowOpened = false;
+
 	// Costs/cooldowns must be committed before the ability starts doing work.
 	if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
@@ -97,8 +75,29 @@ void UMALAbility_Attack::ActivateAbility(
 		return;
 	}
 
-	// Fresh combo each activation.
-	ResetComboState();
+	// Route confirmed hits from the character's weapon component into this ability. The
+	// component only ever broadcasts on the authority, so binding on both sides is harmless.
+	if (UMALWeaponComponent* WeaponComponent = GetWeaponComponent())
+	{
+		// Abilities are instanced and reused; a stale binding from a previous activation
+		// would resolve hits twice.
+		WeaponComponent->OnWeaponHit.RemoveAll(this);
+		WeaponComponent->OnWeaponHit.AddUObject(this, &UMALAbility_Attack::OnWeaponHit);
+	}
+
+	// Fresh combo each activation; the state machine lives on the character, not the ability.
+	if (UMALComboComponent* ComboComponent = GetComboComponent())
+	{
+		ComboComponent->OnComboAdvanced.RemoveAll(this);
+		ComboComponent->OnComboAdvanced.AddUObject(this, &UMALAbility_Attack::OnComboAdvanced);
+		ComboComponent->OnRecoveryExpired.RemoveAll(this);
+		ComboComponent->OnRecoveryExpired.AddUObject(this, &UMALAbility_Attack::ReleaseRecovery);
+
+		// The montage section is the only value both sides agree on, so let the state machine
+		// chain from it instead of from its own cached step.
+		ComboComponent->MontageStepQuery.BindUObject(this, &UMALAbility_Attack::GetCurrentComboStepFromMontage);
+		ComboComponent->BeginCombo(ComboSections, ComboInputBufferWindow, RecoveryReleaseDelay);
+	}
 
 	// Enter at the first combo section (falls back to montage start if none configured).
 	const FName StartSection = ComboSections.IsValidIndex(0) ? ComboSections[0] : NAME_None;
@@ -128,17 +127,6 @@ void UMALAbility_Attack::ActivateAbility(
 	PlayTask->OnCancelled.AddDynamic(this, &UMALAbility_Attack::OnMontageCancelled);
 	PlayTask->ReadyForActivation();
 
-	// Listen for hit events fired from the montage (AN_SendHitEvent -> MAL.Event.Hit).
-	// Kept as an optional decoupled path; weapon collision is the active damage source.
-	const UMALGameplayTags* Tags = UMALGameplayTags::Get();
-	UAbilityTask_WaitGameplayEvent* HitTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
-		this, Tags->Event_Hit, nullptr, /*bOnlyTriggerOnce*/ false, /*bOnlyMatchExact*/ true);
-	if (HitTask)
-	{
-		HitTask->EventReceived.AddDynamic(this, &UMALAbility_Attack::OnHitEventReceived);
-		HitTask->ReadyForActivation();
-	}
-
 	// NOTE: the forward lunge is intentionally NOT applied here. It is triggered per-hit by
 	// the montage's AN_Lunge notify -> TriggerLunge() -> ApplyLunge().
 }
@@ -152,6 +140,15 @@ void UMALAbility_Attack::EndAbility(
 {
 	UE_LOG(LogTemp, Log, TEXT("UMALAbility_Attack::EndAbility - Attack ended. Cancelled: %s"), bWasCancelled ? TEXT("true") : TEXT("false"));
 
+	// A montage without an opening notify plays a full swing that can never hit. Reporting it
+	// here points straight at the asset instead of leaving it to guesswork during a fight.
+	if (!bHitWindowOpened && !bWasCancelled)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("UMALAbility_Attack::EndAbility - %s finished without opening a hit window: add a MAL Weapon Collision notify with bEnable=true to %s"),
+			*GetName(), *GetNameSafe(AttackMontage));
+	}
+
 	// Stop any in-flight lunge explicitly; the task is also destroyed by EndAbility, but
 	// ending it here guarantees the root motion source is removed before the movement mode
 	// is restored.
@@ -161,17 +158,24 @@ void UMALAbility_Attack::EndAbility(
 	}
 	ActiveLungeTask = nullptr;
 
-	// Clean up weapon collision in case the ability ends before the disable notify fires
-	DisableWeaponCollision();
+	// Clean up weapon collision in case the ability ends before the disable notify fires.
+	// Not routed through DisableWeaponCollision on purpose: that also arms the recovery timer,
+	// and a zero RecoveryReleaseDelay would re-enter EndAbility before Super finishes here.
+	if (UMALWeaponComponent* WeaponComponent = GetWeaponComponent())
+	{
+		WeaponComponent->EndHitWindow();
+		WeaponComponent->OnWeaponHit.RemoveAll(this);
+	}
 
-	// Reset combo state so the next activation starts fresh.
-	ResetComboState();
+	if (UMALComboComponent* ComboComponent = GetComboComponent())
+	{
+		ComboComponent->OnComboAdvanced.RemoveAll(this);
+		ComboComponent->OnRecoveryExpired.RemoveAll(this);
+		ComboComponent->MontageStepQuery.Unbind();
+		ComboComponent->EndCombo();
+	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
-
-	// DisableWeaponCollision above may have armed a release for a hit window that is now moot.
-	// Clearing after Super also covers the ability ending on its own, normally or cancelled.
-	CancelRecoveryRelease();
 }
 
 void UMALAbility_Attack::OnMontageCompleted()
@@ -265,73 +269,33 @@ void UMALAbility_Attack::OnLungeFinished()
 
 void UMALAbility_Attack::OnInputPressed(const FInputActionValue& Value)
 {
-	// Let the base forward/broadcast first, then handle combo chaining.
+	// Let the base forward/broadcast first, then hand the press to the combo state machine.
 	Super::OnInputPressed(Value);
-	HandleComboInput();
-}
 
-void UMALAbility_Attack::HandleComboInput()
-{
-	if (bComboWindowOpen)
+	if (UMALComboComponent* ComboComponent = GetComboComponent())
 	{
-		AdvanceCombo();
-	}
-	else
-	{
-		// Pressed outside the window: buffer it briefly and consume when the next window opens.
-		bComboInputBuffered = true;
-		ComboInputBufferTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+		ComboComponent->PressAttack();
 	}
 }
 
-void UMALAbility_Attack::AdvanceCombo()
+UMALComboComponent* UMALAbility_Attack::GetComboComponent() const
 {
-	// No further section -> stay on the current one (it flows into Recovery and ends).
-	if (!ComboSections.IsValidIndex(ComboStep + 1))
+	if (const AMALCharacterBase* Character = Cast<AMALCharacterBase>(GetAvatarActorFromActorInfo()))
 	{
-		bComboInputBuffered = false;
-		ComboInputBufferTime = 0.0;
-		return;
+		return Character->GetComboComponent();
 	}
 
-	ComboStep++;
-	bComboInputBuffered = false;
-	bComboWindowOpen = false; // closed until the next section's window notify reopens it
-	ComboInputBufferTime = 0.0;
+	return nullptr;
+}
 
+void UMALAbility_Attack::OnComboAdvanced(int32 Step, FName Section)
+{
 	// Use the ability API (ASC::CurrentMontageJumpToSection under the hood): it sends a
 	// reliable server RPC from clients and replicates the section to other clients.
-	MontageJumpToSection(ComboSections[ComboStep]);
+	MontageJumpToSection(Section);
 
 	UE_LOG(LogTemp, Log, TEXT("UMALAbility_Attack: advanced to combo step %d (section %s)"),
-		ComboStep, *ComboSections[ComboStep].ToString());
-}
-
-void UMALAbility_Attack::TryConsumeBufferedInput()
-{
-	if (!bComboInputBuffered)
-	{
-		return;
-	}
-
-	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : ComboInputBufferTime;
-	if (Now - ComboInputBufferTime > static_cast<double>(ComboInputBufferWindow))
-	{
-		// Stale press: don't let an input from several seconds ago auto-chain.
-		bComboInputBuffered = false;
-		return;
-	}
-
-	bComboInputBuffered = false;
-	AdvanceCombo();
-}
-
-void UMALAbility_Attack::ResetComboState()
-{
-	ComboStep = 0;
-	bComboWindowOpen = false;
-	bComboInputBuffered = false;
-	ComboInputBufferTime = 0.0;
+		Step, *Section.ToString());
 }
 
 int32 UMALAbility_Attack::GetCurrentComboStepFromMontage() const
@@ -346,25 +310,30 @@ int32 UMALAbility_Attack::GetCurrentComboStepFromMontage() const
 		}
 	}
 
-	return ComboStep;
+	// Montage is between sections (transition frame, or no montage yet): fall back to the
+	// state machine's current step.
+	if (const UMALComboComponent* ComboComponent = GetComboComponent())
+	{
+		return ComboComponent->GetStep();
+	}
+
+	return 0;
 }
 
 void UMALAbility_Attack::OpenComboWindow()
 {
-	bComboWindowOpen = true;
-
-	// If the player pressed attack before the window opened, chain immediately.
-	TryConsumeBufferedInput();
+	if (UMALComboComponent* ComboComponent = GetComboComponent())
+	{
+		ComboComponent->OpenWindow();
+	}
 }
 
 void UMALAbility_Attack::CloseComboWindow()
 {
-	bComboWindowOpen = false;
-
-	// Past this point the chain can no longer be extended, so the rest of the montage is pure
-	// recovery. Re-arming the timer here (rather than relying only on the hit window close)
-	// keeps the grace period aligned with the last frame the player could still act.
-	ScheduleRecoveryRelease();
+	if (UMALComboComponent* ComboComponent = GetComboComponent())
+	{
+		ComboComponent->CloseWindow();
+	}
 }
 
 void UMALAbility_Attack::TriggerLunge()
@@ -372,110 +341,37 @@ void UMALAbility_Attack::TriggerLunge()
 	ApplyLunge();
 }
 
-void UMALAbility_Attack::OnHitEventReceived(FGameplayEventData Payload)
-{
-	// Optional event-driven path (requires a MAL Send Hit Event notify in the montage).
-	UE_LOG(LogTemp, Log, TEXT("UMALAbility_Attack: hit event received (combo step %d)"),
-		GetCurrentComboStepFromMontage());
-}
-
 void UMALAbility_Attack::EnableWeaponCollision()
 {
+	bHitWindowOpened = true;
+
 	// A new hit window means this section still owns the ability: a release left over from the
 	// previous section would end it in the middle of the swing.
-	CancelRecoveryRelease();
-
-	// Guard: if already enabled, unbind first to avoid duplicate delegate binding
-	if (WeaponCollisionComp)
+	if (UMALComboComponent* ComboComponent = GetComboComponent())
 	{
-		WeaponCollisionComp->OnComponentBeginOverlap.RemoveDynamic(this, &UMALAbility_Attack::OnWeaponOverlapBegin);
-		WeaponCollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		WeaponCollisionComp = nullptr;
+		ComboComponent->CancelRecovery();
 	}
 
-	ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
-	if (!Character)
+	// The component owns the collision state and the per-swing hit list; the ability only says
+	// when a swing starts. StartHitWindow is a no-op on clients.
+	if (UMALWeaponComponent* WeaponComponent = GetWeaponComponent())
 	{
-		return;
+		WeaponComponent->StartHitWindow(GetCurrentComboStepFromMontage(), WeaponCollisionSocketName);
 	}
-
-	// Find the weapon collision component by name (skip CapsuleComponent etc.)
-	WeaponCollisionComp = nullptr;
-	TArray<UActorComponent*> Comps;
-	Character->GetComponents(Comps);
-	for (UActorComponent* Comp : Comps)
-	{
-		UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(Comp);
-		if (PrimComp && PrimComp->GetFName() == WeaponCollisionSocketName)
-		{
-			WeaponCollisionComp = PrimComp;
-			break;
-		}
-	}
-
-	if (!WeaponCollisionComp)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("UMALAbility_Attack::EnableWeaponCollision - No component named '%s' found on Character!"), *WeaponCollisionSocketName.ToString());
-		return;
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("UMALAbility_Attack::EnableWeaponCollision - Found weapon collision component: %s"), *WeaponCollisionComp->GetName());
-
-	// New swing: clear the per-swing hit set so each target can be hit once.
-	HitActorsThisSwing.Empty();
-
-	// Enable collision and bind overlap
-	WeaponCollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	WeaponCollisionComp->SetCollisionObjectType(ECC_WorldDynamic);
-	WeaponCollisionComp->SetCollisionResponseToAllChannels(ECR_Ignore);
-	WeaponCollisionComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-	WeaponCollisionComp->SetGenerateOverlapEvents(true);
-
-	WeaponCollisionComp->OnComponentBeginOverlap.AddDynamic(this, &UMALAbility_Attack::OnWeaponOverlapBegin);
 }
 
 void UMALAbility_Attack::DisableWeaponCollision()
 {
-	if (WeaponCollisionComp)
+	if (UMALWeaponComponent* WeaponComponent = GetWeaponComponent())
 	{
-		WeaponCollisionComp->OnComponentBeginOverlap.RemoveDynamic(this, &UMALAbility_Attack::OnWeaponOverlapBegin);
-		WeaponCollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		WeaponCollisionComp = nullptr;
+		WeaponComponent->EndHitWindow();
 	}
-
-	HitActorsThisSwing.Empty();
 
 	// The hit window is over; everything left in the montage is recovery. Do not keep the
 	// character locked for animation nobody is going to watch.
-	ScheduleRecoveryRelease();
-}
-
-void UMALAbility_Attack::ScheduleRecoveryRelease()
-{
-	UWorld* World = GetWorld();
-	if (!World || !IsActive())
+	if (UMALComboComponent* ComboComponent = GetComboComponent())
 	{
-		return;
-	}
-
-	// Re-arm cleanly: one montage can open and close several hit windows.
-	World->GetTimerManager().ClearTimer(RecoveryReleaseTimer);
-
-	if (RecoveryReleaseDelay <= 0.0f)
-	{
-		ReleaseRecovery();
-		return;
-	}
-
-	World->GetTimerManager().SetTimer(RecoveryReleaseTimer, this,
-		&UMALAbility_Attack::ReleaseRecovery, RecoveryReleaseDelay, false);
-}
-
-void UMALAbility_Attack::CancelRecoveryRelease()
-{
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(RecoveryReleaseTimer);
+		ComboComponent->ScheduleRecovery();
 	}
 }
 
@@ -492,137 +388,32 @@ void UMALAbility_Attack::ReleaseRecovery()
 	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, false);
 }
 
-void UMALAbility_Attack::OnWeaponOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+UMALWeaponComponent* UMALAbility_Attack::GetWeaponComponent() const
 {
-	AActor* Avatar = GetAvatarActorFromActorInfo();
-	if (!Avatar || !Avatar->HasAuthority())
+	if (const AMALCharacterBase* Character = Cast<AMALCharacterBase>(GetAvatarActorFromActorInfo()))
 	{
-		// Hit resolution is server-authoritative; clients only play cosmetics.
-		return;
+		return Character->GetWeaponComponent();
 	}
 
-	if (!OtherActor || OtherActor == Avatar)
-	{
-		return;
-	}
-
-	// One hit per actor per swing.
-	if (HitActorsThisSwing.Contains(OtherActor))
-	{
-		return;
-	}
-
-	if (MALIsFriendly(Avatar, OtherActor))
-	{
-		return;
-	}
-
-	HitActorsThisSwing.Add(OtherActor);
-
-	FMALHitResult HitResult;
-	HitResult.HitActor = OtherActor;
-	HitResult.WeaponSocketName = WeaponCollisionSocketName;
-	HitResult.ComboStep = GetCurrentComboStepFromMontage();
-
-	if (bFromSweep && SweepResult.bBlockingHit)
-	{
-		HitResult.HitLocation = SweepResult.ImpactPoint;
-	}
-	else if (OtherComp)
-	{
-		HitResult.HitLocation = OtherComp->GetComponentLocation();
-	}
-	else
-	{
-		HitResult.HitLocation = OverlappedComp ? OverlappedComp->GetComponentLocation() : FVector::ZeroVector;
-	}
-
-	OnWeaponHit(HitResult);
+	return nullptr;
 }
 
 void UMALAbility_Attack::OnWeaponHit(const FMALHitResult& HitResult)
 {
-	AActor* Avatar = GetAvatarActorFromActorInfo();
-	if (!Avatar || !Avatar->HasAuthority())
-	{
-		return;
-	}
+	FMALWeaponHitRequest Request;
+	Request.Instigator = GetAvatarActorFromActorInfo();
+	Request.Hit = HitResult;
+	Request.SourceObject = this;
+	Request.DamageGEClass = DamageGEClass;
+	Request.BaseDamage = BaseDamage;
+	Request.ComboDamageBonusPerStep = ComboDamageBonusPerStep;
+	Request.AbilityLevel = GetAbilityLevel();
+	Request.LevelScale = GetLevelScaledValue(TEXT("Damage"), 1.0f);
+	Request.ImpactCueTag = HitImpactCueTag;
+	Request.HitStopDuration = HitStopDuration;
+	Request.CameraShakeClass = HitCameraShakeClass;
 
-	if (!HitResult.HitActor || HitResult.HitActor == Avatar)
-	{
-		return;
-	}
-
-	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
-	UAbilitySystemComponent* TargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(HitResult.HitActor);
-	if (!SourceASC || !TargetASC)
-	{
-		return;
-	}
-
-	const int32 Step = GetCurrentComboStepFromMontage();
-	const float LevelScale = GetLevelScaledValue(TEXT("Damage"), 1.0f);
-	const float Damage = FMath::Max(0.0f, BaseDamage * LevelScale * (1.0f + ComboDamageBonusPerStep * Step));
-
-	TSubclassOf<UGameplayEffect> GEClass = DamageGEClass;
-	if (!GEClass)
-	{
-		GEClass = UMALDamageGameplayEffect::StaticClass();
-	}
-
-	UE_LOG(LogTemp, Verbose, TEXT("UMALAbility_Attack: weapon hit on %s (combo step %d, damage %.1f, GE %s, targetSets %d)"),
-		*HitResult.HitActor->GetName(), Step, Damage, *GetNameSafe(GEClass.Get()), TargetASC->GetSpawnedAttributes().Num());
-
-	if (Damage <= 0.0f)
-	{
-		return;
-	}
-
-	FGameplayEffectContextHandle Context = SourceASC->MakeEffectContext();
-	Context.AddInstigator(Avatar, Avatar);
-	Context.AddSourceObject(this);
-
-	const FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(GEClass, GetAbilityLevel(), Context);
-	if (SpecHandle.IsValid())
-	{
-		SpecHandle.Data->SetSetByCallerMagnitude(UMALGameplayTags::Get()->Data_Damage, Damage);
-		SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("UMALAbility_Attack: MakeOutgoingSpec failed for %s"), *GetNameSafe(GEClass.Get()));
-	}
-
-	// Confirmed hit: ask the attacker's owning client to play camera shake + local hit-stop.
-	if (ACharacter* AttackerCharacter = Cast<ACharacter>(Avatar))
-	{
-		if (AMALPlayerController* PC = Cast<AMALPlayerController>(AttackerCharacter->GetController()))
-		{
-			PC->ClientOnHitLanded(HitStopDuration, HitCameraShakeClass);
-		}
-	}
-
-	// Impact feedback at the point of contact. Nothing here plays locally: this code only runs
-	// on the server, so the cue is what replicates the effect out to the clients.
-	if (HitImpactCueTag.IsValid())
-	{
-		FGameplayCueParameters CueParams;
-		CueParams.Location = HitResult.HitLocation;
-		CueParams.Instigator = Avatar;
-		CueParams.EffectCauser = Avatar;
-		CueParams.SourceObject = this;
-		CueParams.RawMagnitude = Damage;
-		CueParams.AbilityLevel = GetAbilityLevel();
-
-		SourceASC->ExecuteGameplayCue(HitImpactCueTag, CueParams);
-	}
-
-	// Broadcast WeaponHit event for future listeners (UI, hit-stop, audio, ...)
-	FGameplayEventData EventData;
-	EventData.Instigator = Avatar;
-	EventData.Target = HitResult.HitActor;
-	EventData.EventMagnitude = Damage;
-	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(
-		Avatar, UMALGameplayTags::Get()->Event_WeaponHit, EventData);
+	// The executor owns damage, feedback and the WeaponHit event; this ability only supplies
+	// its tuning. Server-only, like the weapon component that called us.
+	UMALDamageExecutor::ExecuteWeaponHit(Request);
 }

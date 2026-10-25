@@ -19,9 +19,9 @@ class APlayerController;
  * are recycled instead of recreated - a fresh CreateWidget per hit would wake the garbage
  * collector in the middle of combat.
  *
- * Damage numbers are driven from the server (see AMALPlayerController::RouteDamageNumber), so a
- * dedicated server never reaches this class: without a LocalPlayer the subsystem is never
- * instantiated.
+ * Damage numbers are driven from the server (UMALCombatEventsSubsystem routes them through
+ * AMALPlayerController::ClientShowDamageNumber), so a dedicated server never reaches this class:
+ * without a LocalPlayer the subsystem is never instantiated.
  */
 UCLASS()
 class MAL_API UMALDamageNumberSubsystem : public ULocalPlayerSubsystem

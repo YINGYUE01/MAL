@@ -5,6 +5,9 @@
 
 AMALCharacter::AMALCharacter()
 {
+	// Without an explicit team the friendly-fire filter cannot tell a teammate from an enemy, so
+	// every player-controlled pawn starts on the player side. Blueprints can still override it.
+	TeamId = FGenericTeamId(MALTeam::Player);
 }
 
 bool AMALCharacter::AreDefaultAttributesApplied() const

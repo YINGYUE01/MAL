@@ -12,14 +12,16 @@ class UAnimMontage;
 /**
  * UMALAbility_Buff
  *
- * 自我增益技能：施放时扣一次法力，给自己挂一个带持续时间的伤害加成 GE。
+ * Self-buff ability: spends mana once and puts a timed damage-bonus GE on the caster.
  *
- * 配了 ActivationMontage 时，技能会存活到施法动画播完或被中断；没配时施放当帧就结束。
- * buff 的存续与技能本身的生命周期无关，完全交给 GE：到期、被驱散、目标死亡都会
- * 自动移除，连带 GameplayCue 生成的特效一起消失。所以这里不需要任何计时器。
+ * With ActivationMontage set, the ability lives until the cast animation finishes or is
+ * interrupted; without one it applies the buff and ends on the same frame. The buff's lifetime
+ * is unrelated to the ability's: the GE owns it, so expiry, dispels and the target's death all
+ * remove it and the gameplay cue it spawned. No timer is needed here.
  *
- * 费用走 CostGameplayEffectClass（UMALManaCostGameplayEffect 的蓝图子类）。
- * 法力不足时 CheckCost 会在 CanActivateAbility 阶段直接拒绝，根本进不到 ActivateAbility。
+ * The cost goes through CostGameplayEffectClass (a blueprint subclass of
+ * UMALManaCostGameplayEffect). When mana is short, CheckCost rejects the cast during
+ * CanActivateAbility, so ActivateAbility never runs.
  */
 UCLASS()
 class MAL_API UMALAbility_Buff : public UMALGameplayAbility

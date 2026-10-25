@@ -9,22 +9,24 @@
 /**
  * UMALDamageExecutionCalculation
  *
- * 伤害结算执行类（物理/魔法双通道 + 暴击）。
+ * Damage execution (physical/magic channels plus crits).
  *
- * 公式:
- *   Base        = SetByCaller(MAL.Data.Damage)          // 技能侧算好的基础伤害（含等级/连招加成）
- *   Attack      = 物理: PhysicalAttack / 魔法: MagicAttack      (Source)
- *   Defense     = 物理: PhysicalDefense / 魔法: MagicDefense    (Target)
- *   DamageBonus = 伤害加成百分比 (Source)，由 Buff/Debuff 的 GE 修改
+ * Formula:
+ *   Base        = SetByCaller(MAL.Data.Damage)          // base damage from the ability (level/combo bonus included)
+ *   Attack      = physical: PhysicalAttack / magic: MagicAttack      (Source)
+ *   Defense     = physical: PhysicalDefense / magic: MagicDefense    (Target)
+ *   DamageBonus = damage bonus percentage (Source), modified by buff/debuff GEs
  *   Damage      = Base × (1 + Attack / AttackScalingDivisor)
  *                       × (DefenseScalingConstant / (DefenseScalingConstant + Defense))
  *                       × (1 + DamageBonus / 100)
  *   Crit        = Roll[0, 100) < CritChance → Damage × CritDamage / 100
  *
- * 通道由 GE spec 上的 MAL.Damage.Type.Magic 标签决定（动态标签或 GE 资产标签均可），
- * 缺省按物理结算。暴击结果回写 FMALGameplayEffectContext。
+ * The channel is chosen by the MAL.Damage.Type.Magic tag on the GE spec (dynamic or asset tags
+ * both work) and defaults to physical. The crit result is written back into
+ * FMALGameplayEffectContext.
  *
- * 输出写入 MALAttributeSet.Damage（Meta 属性），由 PostGameplayEffectExecute 结算进 Health。
+ * The result is written to MALAttributeSet.Damage (a Meta attribute), and
+ * PostGameplayEffectExecute folds it into Health.
  */
 UCLASS(BlueprintType, Blueprintable)
 class MAL_API UMALDamageExecutionCalculation : public UGameplayEffectExecutionCalculation
@@ -39,19 +41,19 @@ public:
 		FGameplayEffectCustomExecutionOutput& OutExecutionOutput) const override;
 
 protected:
-	/** 攻击力换算基数：每 1 点 Attack 提供 1 / AttackScalingDivisor 的百分比加成。 */
+	/** Attack scaling base: every point of Attack adds 1 / AttackScalingDivisor as a percentage. */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|Damage", meta = (ClampMin = "1.0"))
 	float AttackScalingDivisor = 100.f;
 
-	/** 防御减伤基数 K：减伤系数 = K / (K + Defense)。 */
+	/** Defense mitigation base K: mitigation factor = K / (K + Defense). */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|Damage", meta = (ClampMin = "1.0"))
 	float DefenseScalingConstant = 100.f;
 
-	/** 关闭后跳过暴击判定（调试或特殊技能使用）。 */
+	/** When disabled, the crit roll is skipped (debugging or special abilities). */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|Damage")
 	bool bAllowCriticalHits = true;
 
 private:
-	/** 该次结算是否走魔法通道（读取 Spec 上的 MAL.Damage.Type.Magic 标签）。 */
+	/** Whether this execution uses the magic channel (reads MAL.Damage.Type.Magic off the spec). */
 	static bool IsMagicDamageSpec(const FGameplayEffectSpec& Spec);
 };

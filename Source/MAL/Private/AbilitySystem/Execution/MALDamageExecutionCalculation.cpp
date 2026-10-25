@@ -159,7 +159,10 @@ void UMALDamageExecutionCalculation::Execute_Implementation(
 	FGameplayEffectContextHandle Context = Spec.GetContext();
 	if (FGameplayEffectContext* RawContext = Context.Get())
 	{
-		if (RawContext->GetScriptStruct() == FMALGameplayEffectContext::StaticStruct())
+		// IsChildOf, not ==, and matching UMALAttributeSet::PostGameplayEffectExecute: a
+		// context subclass would silently lose the crit/channel flags otherwise.
+		const UScriptStruct* ContextStruct = RawContext->GetScriptStruct();
+		if (ContextStruct && ContextStruct->IsChildOf(FMALGameplayEffectContext::StaticStruct()))
 		{
 			FMALGameplayEffectContext* MALContext = static_cast<FMALGameplayEffectContext*>(RawContext);
 			MALContext->SetIsCriticalHit(bCriticalHit);

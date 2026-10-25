@@ -103,13 +103,3 @@ bool UMALUserWidget::SetViewModelByClass(UMVVMViewModelBase* ViewModel)
 
 	return bApplied;
 }
-
-void UMALUserWidget::NativeConstruct()
-{
-	Super::NativeConstruct();
-}
-
-void UMALUserWidget::NativeDestruct()
-{
-	Super::NativeDestruct();
-}

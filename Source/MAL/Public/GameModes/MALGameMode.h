@@ -13,7 +13,4 @@ class MAL_API AMALGameMode : public AGameModeBase
 
 public:
 	AMALGameMode();
-
-protected:
-	virtual void BeginPlay() override;
 };

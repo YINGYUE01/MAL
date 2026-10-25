@@ -19,12 +19,13 @@ AMALPlayerState::AMALPlayerState()
 	SetNetUpdateFrequency(100.0f);
 	SetMinNetUpdateFrequency(30.0f);
 
-	// Mixed: GameplayEffects 对 owner 复制（HUD/预测需要），对模拟代理只复制最小信息。
+	// Mixed: GameplayEffects replicate to the owner (the HUD and prediction need them) while
+	// simulated proxies only get the minimum.
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 
-	// 属性集作为 PlayerState 的默认子对象创建，
-	// ASC 初始化时会自动扫描并纳管同一 Owner 上的所有 UAttributeSet。
-	// 属性的网络复制由属性集自身的 ReplicatedUsing + GetLifetimeReplicatedProps 处理。
+	// The attribute set is a default subobject of the PlayerState. ASC initialization adopts
+	// every UAttributeSet it finds on the same owner; networking is handled by the set itself
+	// through ReplicatedUsing + GetLifetimeReplicatedProps.
 	HealthSet = CreateDefaultSubobject<UMALAttributeSet>(TEXT("HealthSet"));
 }
 

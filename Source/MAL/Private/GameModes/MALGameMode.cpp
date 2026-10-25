@@ -13,8 +13,3 @@ AMALGameMode::AMALGameMode()
 	PlayerControllerClass = AMALPlayerController::StaticClass();
 	PlayerStateClass = AMALPlayerState::StaticClass();
 }
-
-void AMALGameMode::BeginPlay()
-{
-	Super::BeginPlay();
-}

@@ -54,6 +54,10 @@ void UMALGameplayTags::InitializeNativeTags()
 	Ability_Dash = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Dash")), TEXT("Dash ability"));
 	Ability_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Buff")), TEXT("Self-buff ability"));
 
+	// Cooldown Tags
+	Cooldown_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Attack")), TEXT("Attack is on cooldown"));
+	Cooldown_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Buff")), TEXT("Self-buff is on cooldown"));
+
 	// Input Tags
 	Input_Move = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Move")), TEXT("Move input"));
 	Input_Look = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Look")), TEXT("Look input"));

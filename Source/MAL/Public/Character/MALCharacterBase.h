@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
 #include "GameplayEffectTypes.h"
+#include "GenericTeamAgentInterface.h"
 #include "MALCharacterBase.generated.h"
 
 class UAbilitySystemComponent;
@@ -13,6 +14,19 @@ class UGameplayEffect;
 class UMALAbilitySystemComponent;
 class UMALAttributeSet;
 class UMALClassDefinition;
+class UMALWeaponComponent;
+class UMALComboComponent;
+struct FMALDamageResolvedEvent;
+
+/**
+ * Team ids the shipped characters are created with. Blueprints can override TeamId per class, so
+ * these are only the defaults a scene can rely on out of the box.
+ */
+namespace MALTeam
+{
+	constexpr uint8 Player = 1;
+	constexpr uint8 Enemy = 2;
+}
 
 /**
  * AMALCharacterBase
@@ -29,7 +43,7 @@ class UMALClassDefinition;
  * duplicate the GAS setup.
  */
 UCLASS(Abstract)
-class MAL_API AMALCharacterBase : public ACharacter, public IAbilitySystemInterface
+class MAL_API AMALCharacterBase : public ACharacter, public IAbilitySystemInterface, public IGenericTeamAgentInterface
 {
 	GENERATED_BODY()
 
@@ -45,6 +59,30 @@ public:
 	/** Cached MAL AttributeSet (PlayerState-owned for players, character-owned for enemies). */
 	UFUNCTION(BlueprintPure, Category = "MAL|AbilitySystem")
 	UMALAttributeSet* GetMALAttributeSet() const;
+
+	//~ Begin IGenericTeamAgentInterface
+	virtual FGenericTeamId GetGenericTeamId() const override { return TeamId; }
+	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamId) override { TeamId = NewTeamId; }
+	virtual ETeamAttitude::Type GetTeamAttitudeTowards(const AActor& Other) const override;
+	//~ End IGenericTeamAgentInterface
+
+	/**
+	 * Team this character fights for.
+	 *
+	 * Static per class: it is read from the archetype on every machine, which is why it is not
+	 * replicated. FGenericTeamId::NoTeam (the default) means unassigned, and an unassigned
+	 * character is neutral towards everyone rather than friendly to other unassigned ones.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Team")
+	FGenericTeamId TeamId;
+
+	/** Melee hit-window driver shared by player characters and enemies. */
+	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
+	UMALWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
+
+	/** Combo state machine shared by player characters and enemies. */
+	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
+	UMALComboComponent* GetComboComponent() const { return ComboComponent; }
 
 	/** Class definition that determines which abilities this character has. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Class")
@@ -63,6 +101,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MAL|Death")
 	void HandleDeath(AActor* Killer = nullptr);
 
+	/**
+	 * Server side: seconds the corpse stays before it is destroyed. Zero keeps it forever.
+	 * A cleared wave should not leave pawns behind that still replicate and tick.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Death", meta = (ClampMin = "0.0"))
+	float CorpseLifeSpan = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttribute;
 
@@ -74,6 +119,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PossessedBy(AController* NewController) override;
 
 	/** Client-side init: the PlayerState (and with it the ASC) replicates after possession. */
@@ -133,6 +179,21 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|AbilitySystem")
 	TObjectPtr<UMALAttributeSet> AttributeSet;
 
+	/**
+	 * Hit-window driver for melee attacks.
+	 * Created here so every character that can swing a weapon has one, regardless of whether
+	 * the ability lives on a player-controlled or an AI-controlled pawn.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Combat")
+	TObjectPtr<UMALWeaponComponent> WeaponComponent;
+
+	/**
+	 * Combo state machine for melee attacks (buffered input, step advancement, recovery).
+	 * Kept off the ability so a new activation always starts from a clean state.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Combat")
+	TObjectPtr<UMALComboComponent> ComboComponent;
+
 	/** Enemy/default guard; player characters use AMALPlayerState's flag instead. */
 	bool bDefaultAttributesApplied = false;
 
@@ -142,6 +203,26 @@ protected:
 private:
 	/** Enter the death state when health crosses zero. Server only. */
 	void HandleHealthChanged(const FOnAttributeChangeData& Data);
+
+	/**
+	 * Authority only: kill this character with the instigator carried by the resolved hit.
+	 *
+	 * The attribute change delegate has no effect spec, so the killer can only be named from
+	 * here. UMALAttributeSet publishes the event immediately after folding damage into Health,
+	 * which is why HandleHealthChanged defers its own fallback by one tick.
+	 */
+	void HandleDamageResolved(const FMALDamageResolvedEvent& Event);
+
+	/** Next-tick fallback for deaths that never went through the damage pipeline. */
+	void HandlePendingDeath();
+
+	/**
+	 * True while HandlePendingDeath is queued. Health can cross zero once per damage tick, so
+	 * without this guard a damage-over-time effect would queue a fresh timer on every change.
+	 */
+	bool bPendingDeathCheck = false;
+
+	FTimerHandle PendingDeathTimer;
 
 	/** Attach to the health attribute on whichever ASC this character currently uses. */
 	void BindHealthChange();

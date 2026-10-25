@@ -17,9 +17,7 @@
 
 class UMALInputConfig;
 class UInputMappingContext;
-class ACharacter;
-class UAnimInstance;
-class UAnimMontage;
+class UMALHitFeedbackComponent;
 
 UCLASS()
 class MAL_API AMALPlayerController : public APlayerController
@@ -31,7 +29,11 @@ public:
 
 	/**
 	 * Server -> owning client: confirmed hit feedback.
-	 * Starts the camera shake and a short local hit-stop (animation + movement freeze).
+	 * Starts the camera shake and a short local hit-stop.
+	 *
+	 * A listen server host skips the hit-stop: its local world is the authoritative one, so any
+	 * freeze there would also stall what the server replicates and other clients would see the
+	 * attacker hitch. The shake still plays because it is presentation only.
 	 */
 	UFUNCTION(Client, Reliable)
 	void ClientOnHitLanded(float HitStopDuration, TSubclassOf<UCameraShakeBase> ShakeClass);
@@ -44,16 +46,6 @@ public:
 	 */
 	UFUNCTION(Client, Unreliable)
 	void ClientShowDamageNumber(float Amount, bool bCritical, bool bMagic, bool bKillingBlow, FVector WorldLocation);
-
-	/**
-	 * Server side: deliver a resolved hit to every client that should draw a number for it.
-	 *
-	 * Two clients can care about the same hit - the victim's owner ("I took damage") and the
-	 * attacker's owner ("I hit something") - so both are notified and deduplicated. Called from
-	 * UMALAttributeSet::PostGameplayEffectExecute, which only runs on the authority.
-	 */
-	static void RouteDamageNumber(AActor* Victim, AActor* Instigator, const FVector& WorldLocation,
-		float Amount, bool bCritical, bool bMagic, bool bKillingBlow);
 
 	/** Open the pause menu, or close it when one is already open. */
 	UFUNCTION(BlueprintCallable, Category = "MAL|UI")
@@ -71,13 +63,6 @@ protected:
 	virtual void SetupInputComponent() override;
 	virtual void PostProcessInput(const float DeltaTime, const bool bGamePaused) override;
 
-	/** Freeze the locally controlled character briefly; overlapping hits extend the timer. */
-	void BeginHitStop(float Duration);
-
-	/** Restore montage play rate and character time dilation. */
-	void EndHitStop();
-
-	
 	UFUNCTION()
 	void HandleInputActionEvent(FGameplayTag InputTag, const FInputActionValue& Value, ETriggerEvent EventType);
 
@@ -103,13 +88,7 @@ protected:
 	TSubclassOf<UMALDamageNumberWidget> DamageNumberWidgetClass;
 
 private:
-	FTimerHandle HitStopTimer;
-	bool bHitStopActive = false;
-
-	TWeakObjectPtr<ACharacter> HitStopCharacter;
-	TWeakObjectPtr<UAnimInstance> HitStopAnimInstance;
-	TWeakObjectPtr<UAnimMontage> HitStopMontage;
-
-	float HitStopRestoreRate = 1.0f;
-	float HitStopRestoreTimeDilation = 1.0f;
+	/** Local hit-stop driver for confirmed hits (camera shake stays on the controller). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Combat", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UMALHitFeedbackComponent> HitFeedbackComponent;
 };

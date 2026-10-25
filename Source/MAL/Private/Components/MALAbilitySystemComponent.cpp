@@ -183,6 +183,10 @@ void UMALAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGame
 {
 	if (bGamePaused)
 	{
+		// Drop whatever was buffered while the world was paused. Holding the buffers across the
+		// pause would replay them the moment time resumes: a press made through the pause menu
+		// would activate an ability the player never meant to use in gameplay.
+		ClearAbilityInput();
 		return;
 	}
 
@@ -250,6 +254,16 @@ void UMALAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGame
 		{
 			// Forward release event (wakes WaitInputRelease)
 			AbilitySpecInputReleased(*Spec);
+
+			// WhileInputActive means "only while the key is held", so the release ends it. The
+			// engine only forwards InputReleased and relies on the ability ending itself; an
+			// ability that does not listen to the event would otherwise stay active forever.
+			const UMALGameplayAbility* MALAbility = Cast<UMALGameplayAbility>(Spec->Ability);
+			if (MALAbility && MALAbility->ActivationPolicy == EMALAbilityActivationPolicy::WhileInputActive
+				&& Spec->IsActive())
+			{
+				CancelAbilityHandle(Handle);
+			}
 		}
 
 		// Remove from held set

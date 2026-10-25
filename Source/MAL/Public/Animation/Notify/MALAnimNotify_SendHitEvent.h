@@ -10,9 +10,12 @@
 /**
  * UMALAnimNotify_SendHitEvent
  *
- * Instant notify placed at each combo section's impact frame. Sends a GameplayEvent to
- * the owning actor so the ability (via UAbilityTask_WaitGameplayEvent) can resolve the
- * hit without the animation coupling to combat code.
+ * Instant notify placed at a montage's impact frame. Sends a GameplayEvent to the owning actor
+ * so gameplay logic can hook that frame without the animation coupling to combat code.
+ *
+ * Melee attacks resolve their hits from the weapon collision window instead, so nothing in the
+ * project listens for this today. It stays as the generic hook for event-driven abilities: an
+ * ability that needs the frame adds a UAbilityTask_WaitGameplayEvent for MAL.Event.Hit.
  */
 UCLASS(meta = (DisplayName = "MAL Send Hit Event"))
 class MAL_API UMALAnimNotify_SendHitEvent : public UAnimNotify

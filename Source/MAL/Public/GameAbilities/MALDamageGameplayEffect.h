@@ -9,8 +9,9 @@
 /**
  * UMALDamageGameplayEffect
  *
- * 代码内置的伤害 GE 兜底：Instant，向 MALAttributeSet.Damage（meta）加 SetByCaller 伤害。
- * 项目里有正式的 GE_Damage 资产时，把 GA_AttackAbility 的 DamageGEClass 指向资产即可覆盖它。
+ * Code-side fallback damage GE: instant, adds a SetByCaller amount to MALAttributeSet.Damage
+ * (the meta attribute). Once the project has a real GE_Damage asset, point GA_AttackAbility's
+ * DamageGEClass at it to override this.
  */
 UCLASS()
 class MAL_API UMALDamageGameplayEffect : public UGameplayEffect

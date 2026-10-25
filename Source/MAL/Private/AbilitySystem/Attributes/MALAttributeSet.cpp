@@ -6,7 +6,11 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Abilities/GameplayAbilityTypes.h"
 #include "AbilitySystem/MALGameplayEffectContext.h"
-#include "Player/MALPlayerController.h"
+#include "Combat/MALCombatEvents.h"
+#include "Combat/MALCombatEventsSubsystem.h"
+#include "Engine/World.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerState.h"
 #include "Tags/MALGameplayTags.h"
 
 namespace
@@ -15,12 +19,22 @@ namespace
 	 * Hand one resolved hit to the presentation layer.
 	 *
 	 * Only the authority knows the post-mitigation value, so a client-side predicted effect must
-	 * not draw a number of its own on top of the replicated one.
+	 * not draw a number of its own on top of the replicated one. Routing lives in
+	 * UMALCombatEventsSubsystem: the attribute layer publishes an event and never reaches into the
+	 * player controller itself.
 	 */
 	void NotifyDamageNumber(UMALAttributeSet* AttributeSet, const FGameplayEffectSpec& Spec, float Damage, bool bKillingBlow)
 	{
 		AActor* Victim = AttributeSet ? AttributeSet->GetOwningActor() : nullptr;
 		if (!Victim || !Victim->HasAuthority())
+		{
+			return;
+		}
+
+		UMALCombatEventsSubsystem* CombatEvents = Victim->GetWorld()
+			? Victim->GetWorld()->GetSubsystem<UMALCombatEventsSubsystem>()
+			: nullptr;
+		if (!CombatEvents)
 		{
 			return;
 		}
@@ -37,22 +51,44 @@ namespace
 
 		// Impact point when the hit carried one, otherwise above the victim's pelvis so the number
 		// clears the character mesh instead of spawning inside it.
-		FVector WorldLocation = Victim->GetActorLocation();
-		WorldLocation.Z += Victim->GetSimpleCollisionHalfHeight() * 0.5f;
+		//
+		// The set lives on the PlayerState for player characters and on the pawn for enemies, so the
+		// owning actor is not always what the number should hang over: a PlayerState keeps its own
+		// location and never follows the pawn. Resolve it before measuring anything.
+		AActor* LocationActor = Victim;
+		if (const APlayerState* PlayerState = Cast<APlayerState>(Victim))
+		{
+			if (APawn* PlayerStatePawn = PlayerState->GetPawn())
+			{
+				LocationActor = PlayerStatePawn;
+			}
+		}
+
+		FVector WorldLocation = LocationActor->GetActorLocation();
+		WorldLocation.Z += LocationActor->GetSimpleCollisionHalfHeight() * 0.5f;
 		if (EffectContext)
 		{
 			if (const FHitResult* HitResult = EffectContext->GetHitResult())
 			{
-				WorldLocation = HitResult->ImpactPoint;
+				// A context can carry a hit result that never had a point filled in. Trusting it
+				// blindly would park the number at the world origin.
+				if (!HitResult->ImpactPoint.IsNearlyZero())
+				{
+					WorldLocation = HitResult->ImpactPoint;
+				}
 			}
 		}
 
-		AMALPlayerController::RouteDamageNumber(
-			Victim, EffectContext ? EffectContext->GetInstigator() : nullptr,
-			WorldLocation, Damage,
-			MALContext && MALContext->IsCriticalHit(),
-			MALContext && MALContext->IsMagicDamage(),
-			bKillingBlow);
+		FMALDamageResolvedEvent Event;
+		Event.Victim = Victim;
+		Event.Instigator = EffectContext ? EffectContext->GetInstigator() : nullptr;
+		Event.WorldLocation = WorldLocation;
+		Event.Amount = Damage;
+		Event.bCritical = MALContext && MALContext->IsCriticalHit();
+		Event.bMagic = MALContext && MALContext->IsMagicDamage();
+		Event.bKillingBlow = bKillingBlow;
+
+		CombatEvents->BroadcastDamageResolved(Event);
 	}
 }
 
@@ -94,33 +130,42 @@ void UMALAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
+	// Everything here is public, deliberately.
+	//
+	// COND_OwnerOnly means "the owning connection", and the condition is baked per class rather
+	// than per instance. A player's set lives on the PlayerState and has one, but an enemy's set
+	// lives on the character, whose AI controller owns no connection: OwnerOnly would send its
+	// combat stats to nobody and every client would read 0 from AttackSpeed, PhysicalDefense and
+	// the rest. REPNOTIFY_OnChanged keeps the cost at one update per actual stat change.
+
 	// Primary
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Vigor, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Strength, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Dexterity, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Endurance, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Spirit, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Vigor, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Strength, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Dexterity, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Endurance, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Spirit, COND_None, REPNOTIFY_OnChanged);
 
 	// Secondary
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, HealthRegen, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MaxStamina, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, StaminaRegen, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, ManaRegen, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, PhysicalAttack, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MagicAttack, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, PhysicalDefense, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MagicDefense, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, CritChance, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, CritDamage, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, AttackSpeed, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, DamageBonus, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MaxHealth, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, HealthRegen, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MaxStamina, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, StaminaRegen, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MaxMana, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, ManaRegen, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, PhysicalAttack, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MagicAttack, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, PhysicalDefense, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, MagicDefense, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, CritChance, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, CritDamage, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, AttackSpeed, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, DamageBonus, COND_None, REPNOTIFY_OnChanged);
 
 	// Standalone
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Health, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Mana, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Stamina, COND_None, REPNOTIFY_Always);
+	// Current vitals are read by the enemy nameplates on every client.
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Health, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Mana, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALAttributeSet, Stamina, COND_None, REPNOTIFY_OnChanged);
 
 	// Damage is a meta attribute and intentionally not replicated.
 }
@@ -239,7 +284,7 @@ void UMALAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, f
 {
 	Super::PreAttributeChange(Attribute, NewValue);
 
-	// ---------- Standalone: 当前资源值 Clamp ----------
+	// ---------- Standalone: current resource values, clamped ----------
 	if (Attribute == GetHealthAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
@@ -252,37 +297,38 @@ void UMALAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, f
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxStamina());
 	}
-	// ---------- Secondary: 上限属性，最小 1 ----------
+	// ---------- Secondary: cap attributes, minimum 1 ----------
 	else if (Attribute == GetMaxHealthAttribute()
 		|| Attribute == GetMaxManaAttribute()
 		|| Attribute == GetMaxStaminaAttribute())
 	{
 		NewValue = FMath::Max(NewValue, 1.0f);
 	}
-	// ---------- Secondary: 回复速率，最小 0 ----------
+	// ---------- Secondary: regen rates, minimum 0 ----------
 	else if (Attribute == GetHealthRegenAttribute()
 		|| Attribute == GetManaRegenAttribute()
 		|| Attribute == GetStaminaRegenAttribute())
 	{
 		NewValue = FMath::Max(NewValue, 0.0f);
 	}
-	// ---------- Secondary: 暴击率 0~100 ----------
+	// ---------- Secondary: crit chance 0~100 ----------
 	else if (Attribute == GetCritChanceAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 	}
-	// ---------- Secondary: 攻击速度 0.1~5.0 ----------
+	// ---------- Secondary: attack speed 0.1~5.0 ----------
 	else if (Attribute == GetAttackSpeedAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.1f, 5.0f);
 	}
-	// ---------- Secondary: 伤害加成 -90% ~ +500% ----------
-	// 下限挡住 -100% 的永久免伤叠层，上限只是防止配置错误把曲线拉爆。
+	// ---------- Secondary: damage bonus -90% ~ +500% ----------
+	// The lower bound prevents stacking to permanent immunity at -100%; the upper bound only
+	// guards a misconfigured curve.
 	else if (Attribute == GetDamageBonusAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, -90.0f, 500.0f);
 	}
-	// ---------- Meta: 伤害不能为负 ----------
+	// ---------- Meta: damage cannot be negative ----------
 	else if (Attribute == GetDamageAttribute())
 	{
 		NewValue = FMath::Max(NewValue, 0.0f);
@@ -293,7 +339,7 @@ void UMALAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 {
 	Super::PostGameplayEffectExecute(Data);
 
-	// Damage 是从 GE 进来的 meta 值；在这里一次性结算成 Health，并清零。
+	// Damage arrives as a meta value written by the GE; fold it into Health once and reset it.
 	if (Data.EvaluatedData.Attribute == GetDamageAttribute())
 	{
 		const float LocalDamage = GetDamage();
@@ -329,7 +375,7 @@ void UMALAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 			}
 		}
 	}
-	// MaxHealth 被 GE 修改后，保证当前 Health 不会超过新上限。
+	// A GE changed MaxHealth: keep the current Health from exceeding the new cap.
 	else if (Data.EvaluatedData.Attribute == GetMaxHealthAttribute())
 	{
 		SetHealth(FMath::Clamp(GetHealth(), 0.0f, GetMaxHealth()));

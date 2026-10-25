@@ -25,13 +25,22 @@ public class MAL : ModuleRules
 			"Niagara",
 			// FSlateColor is exposed on a public view model property (damage number colour),
 			// so its module has to be a public dependency, not a private one.
-			"SlateCore"
+			"SlateCore",
+			// AMALCharacterBase implements IGenericTeamAgentInterface, so its header pulls in
+			// GenericTeamAgentInterface.h. That makes the module part of our public surface.
+			"AIModule",
+			// AIController path following and the MoveTo BT task use the navigation system.
+			"NavigationSystem"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
-			"AIModule",
 			"EngineCameras"
 		});
+
+		// Adds the GameplayDebugger dependency and the WITH_GAMEPLAY_DEBUGGER define for the
+		// targets that can actually run the in-game debugger, and compiles our page out everywhere
+		// else. The page itself lives behind that define.
+		SetupGameplayDebuggerSupport(Target);
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

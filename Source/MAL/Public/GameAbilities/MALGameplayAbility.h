@@ -8,6 +8,7 @@
 #include "InputActionValue.h"
 #include "MALGameplayAbility.generated.h"
 class UCurveTable;
+class UTexture2D;
 
 /** Delegate for Blueprint input events */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMALAbilityInputDelegate, const FVector&, InputValue);
@@ -21,7 +22,10 @@ enum class EMALAbilityActivationPolicy : uint8
 	/** Activate on input Started event (e.g. Attack, Dash) */
 	OnInputTriggered	UMETA(DisplayName = "On Input Triggered"),
 
-	/** Stay active while input is held, end on Released (e.g. Defend) */
+	/**
+	 * Active only while input is held, ended on Released (e.g. Defend). The ASC cancels the
+	 * ability when the key comes up unless the ability already ended itself in InputReleased.
+	 */
 	WhileInputActive	UMETA(DisplayName = "While Input Active")
 };
 
@@ -54,6 +58,17 @@ public:
 	/** Curve table for level scaling (damage, cooldown, etc.). Row names are looked up by GetLevelScaledValue. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Level")
 	TObjectPtr<UCurveTable> LevelScalingTable;
+
+	/**
+	 * Name shown on the ability bar. Lives on the ability rather than on a separate UI data asset
+	 * so a slot only has to resolve its spec to describe itself.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|UI")
+	FText DisplayName;
+
+	/** Icon shown on the ability bar; left empty, the slot falls back to a plain frame. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|UI")
+	TObjectPtr<UTexture2D> Icon;
 
 	/**
 	 * Evaluate a row from LevelScalingTable at the ability's current level.

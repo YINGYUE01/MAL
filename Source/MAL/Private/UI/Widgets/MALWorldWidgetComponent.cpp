@@ -87,16 +87,35 @@ void UMALWorldWidgetComponent::ResolveOwnerAbilitySystem()
 	// covers actors that grant it later (spawned summons, pooled enemies).
 	if (!BindRetryTimer.IsValid())
 	{
-		if (UWorld* World = GetWorld())
-		{
-			World->GetTimerManager().SetTimer(
-				BindRetryTimer,
-				this,
-				&UMALWorldWidgetComponent::ResolveOwnerAbilitySystem,
-				FMath::Max(AbilitySystemBindRetryInterval, 0.02f),
-				true);
-		}
+		// First miss: arm the fast poll and start counting from zero.
+		BindRetryCount = 0;
+		ArmRetryTimer(AbilitySystemBindRetryInterval);
+		return;
 	}
+
+	// Past the fast window the ASC is not merely late, so ease off to one attempt per second
+	// rather than keeping a 10 Hz poll alive for the lifetime of the nameplate.
+	if (++BindRetryCount == FMath::Max(AbilitySystemBindFastRetryCount, 1))
+	{
+		StopRetryTimer();
+		ArmRetryTimer(AbilitySystemBindSlowRetryInterval);
+	}
+}
+
+void UMALWorldWidgetComponent::ArmRetryTimer(float Interval)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(
+		BindRetryTimer,
+		this,
+		&UMALWorldWidgetComponent::ResolveOwnerAbilitySystem,
+		FMath::Max(Interval, 0.02f),
+		true);
 }
 
 void UMALWorldWidgetComponent::PushViewModelToWidget()

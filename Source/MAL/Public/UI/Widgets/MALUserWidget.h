@@ -61,9 +61,6 @@ public:
 	bool SetViewModelByClass(UMVVMViewModelBase* ViewModel);
 
 protected:
-	virtual void NativeConstruct() override;
-	virtual void NativeDestruct() override;
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|UI")
 	bool bIsVisible = false;
 };

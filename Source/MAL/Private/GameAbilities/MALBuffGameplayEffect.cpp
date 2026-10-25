@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "GameAbilities/MALBuffGameplayEffect.h"
-
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
 #include "GameplayEffect.h"
 #include "Tags/MALGameplayTags.h"

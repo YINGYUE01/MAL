@@ -28,6 +28,14 @@ public:
 	virtual void NativeInitializeAnimation() override;
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
+	/**
+	 * Advance every montage timeline and fire its notifies without evaluating the anim graph.
+	 * Needed while the mesh has bNoSkeletonUpdate set: the pose stays frozen, but montage position
+	 * and notify timing keep running on the authoritative clock instead of falling behind by the
+	 * length of the freeze.
+	 */
+	void AdvanceMontagesOnly(float DeltaSeconds);
+
 	// ---- Locomotion ----
 
 	UPROPERTY(BlueprintReadOnly, Category = "Locomotion")
@@ -66,8 +74,8 @@ public:
 
 protected:
 	AMALCharacterBase* GetMALCharacter() const;
-	void UpdateMovementData(float DeltaSeconds);
-	void UpdateAimOffset(float DeltaSeconds);
+	void UpdateMovementData();
+	void UpdateAimOffset();
 	EMALLocomotionState CalculateLocomotionState(float InSpeed) const;
 
 private:

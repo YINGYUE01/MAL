@@ -9,12 +9,13 @@
 /**
  * UMALManaCostGameplayEffect
  *
- * 技能费用 GE：Instant，向 MALAttributeSet.Mana 追加一个负值。
+ * Ability cost GE: instant, adds a negative amount to MALAttributeSet.Mana.
  *
- * 必须用固定的 Additive 负值，不能用 SetByCaller：
- * UAbilitySystemComponent::CanApplyAttributeModifiers 只对 Additive 修饰符做
- * "CurrentValue + Magnitude < 0" 的判定，SetByCaller 的幅度在 CheckCost 阶段还是 0，
- * 无法拒绝法力不足的施放。蓝图子类改 Magnitude 即可调整消耗。
+ * It has to use a fixed additive negative value rather than SetByCaller:
+ * UAbilitySystemComponent::CanApplyAttributeModifiers only runs its
+ * "CurrentValue + Magnitude < 0" check for additive modifiers, and a SetByCaller magnitude is
+ * still 0 during CheckCost, so the cast could not be rejected for low mana. A blueprint subclass
+ * only has to change Magnitude to tune the cost.
  */
 UCLASS()
 class MAL_API UMALManaCostGameplayEffect : public UGameplayEffect

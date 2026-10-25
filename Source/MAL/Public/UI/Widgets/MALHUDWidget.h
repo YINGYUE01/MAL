@@ -4,9 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
+#include "GameplayTagContainer.h"
 #include "UI/Widgets/MALUserWidget.h"
 #include "MALHUDWidget.generated.h"
 
+class UMALAbilityBarViewModel;
 class UMALStatViewModel;
 class APlayerController;
 
@@ -32,6 +34,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MAL|UI")
 	UMALStatViewModel* GetStatViewModel() const { return StatViewModel; }
 
+	UFUNCTION(BlueprintPure, Category = "MAL|UI")
+	UMALAbilityBarViewModel* GetAbilityBarViewModel() const { return AbilityBarViewModel; }
+
 protected:
 	/**
 	 * Optional source name to target precisely. Leave empty (the default) to match the source by
@@ -42,19 +47,55 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|MVVM")
 	FName StatViewModelName = NAME_None;
 
+	/** Same contract as StatViewModelName, for the ability bar view model. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|MVVM")
+	FName AbilityBarViewModelName = NAME_None;
+
+	/**
+	 * Input tags drawn on the ability bar, in screen order.
+	 *
+	 * Leave empty to get the default bar (Attack, Buff, Defend, Dash) without having to touch the
+	 * blueprint; the fallback lives in InitializeForPlayer because the tags are native and are
+	 * not safe to read while the widget's class default object is being constructed.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Ability")
+	TArray<FGameplayTag> AbilitySlotTags;
+
 	/** Retry interval while the PlayerState (and with it the ASC) is still replicating in. */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI", meta = (ClampMin = "0.02"))
 	float AbilitySystemBindRetryInterval = 0.1f;
 
+	/**
+	 * Fast retries to spend before falling back to AbilitySystemBindSlowRetryInterval.
+	 * At the default 0.1s interval this covers the first three seconds after creation.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI", meta = (ClampMin = "1"))
+	int32 AbilitySystemBindFastRetryCount = 30;
+
+	/**
+	 * Retry interval once the fast window has elapsed.
+	 *
+	 * Polling never stops on purpose: the HUD outlives possession changes and respawns, so a
+	 * later PlayerState still has to be picked up. It only slows down, because past the first
+	 * few seconds an ASC that is still missing is not merely late.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI", meta = (ClampMin = "0.1"))
+	float AbilitySystemBindSlowRetryInterval = 1.0f;
+
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|UI")
 	TObjectPtr<UMALStatViewModel> StatViewModel;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|UI")
+	TObjectPtr<UMALAbilityBarViewModel> AbilityBarViewModel;
 
 	virtual void NativeDestruct() override;
 
 private:
 	void TryBindAbilitySystem();
 	void StopRetryTimer();
+	void ArmRetryTimer(float Interval);
 
 	TWeakObjectPtr<APlayerController> OwningPlayerController;
 	FTimerHandle BindRetryTimer;
+	int32 BindRetryCount = 0;
 };

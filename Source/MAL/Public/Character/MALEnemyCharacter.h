@@ -23,6 +23,8 @@ class MAL_API AMALEnemyCharacter : public AMALCharacterBase
 public:
 	AMALEnemyCharacter();
 
+	virtual void BeginPlay() override;
+
 	/** World-space health bar shown above the enemy. Set its WidgetClass on the blueprint. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|UI")
 	TObjectPtr<UMALWorldWidgetComponent> HealthBarWidget;

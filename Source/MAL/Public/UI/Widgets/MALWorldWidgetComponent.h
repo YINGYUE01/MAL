@@ -50,6 +50,23 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI", meta = (ClampMin = "0.02"))
 	float AbilitySystemBindRetryInterval = 0.1f;
 
+	/**
+	 * Fast retries to spend before falling back to AbilitySystemBindSlowRetryInterval.
+	 * At the default 0.1s interval this covers the first three seconds after BeginPlay.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI", meta = (ClampMin = "1"))
+	int32 AbilitySystemBindFastRetryCount = 30;
+
+	/**
+	 * Retry interval once the fast window has elapsed.
+	 *
+	 * Never stops: pooled enemies and summons can have their ASC granted long after the
+	 * component starts. It only slows down, so a nameplate waiting on nothing costs ~1 Hz
+	 * instead of 10 Hz.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI", meta = (ClampMin = "0.1"))
+	float AbilitySystemBindSlowRetryInterval = 1.0f;
+
 private:
 	/** Bind to the owning actor's ASC, retrying until it exists. */
 	void ResolveOwnerAbilitySystem();
@@ -58,9 +75,11 @@ private:
 	void PushViewModelToWidget();
 
 	void StopRetryTimer();
+	void ArmRetryTimer(float Interval);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMALStatViewModel> StatViewModel;
 
 	FTimerHandle BindRetryTimer;
+	int32 BindRetryCount = 0;
 };

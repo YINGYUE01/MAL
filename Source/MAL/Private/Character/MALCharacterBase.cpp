@@ -2,10 +2,15 @@
 
 #include "Character/MALCharacterBase.h"
 #include "Player/MALPlayerState.h"
+#include "Combat/MALCombatEvents.h"
+#include "Combat/MALCombatEventsSubsystem.h"
+#include "Combat/MALWeaponComponent.h"
+#include "Combat/MALComboComponent.h"
 #include "Components/MALAbilitySystemComponent.h"
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
 #include "Data/MALClassDefinition.h"
 #include "Data/MALAbilitySet.h"
+#include "Engine/World.h"
 #include "GameplayEffect.h"
 #include "AIController.h"
 #include "BrainComponent.h"
@@ -13,11 +18,17 @@
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
 #include "Tags/MALGameplayTags.h"
+#include "TimerManager.h"
 
 AMALCharacterBase::AMALCharacterBase()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
+
+	// Melee hit windows are driven per character, so the component has to exist on both the
+	// player pawn and the AI-owned enemy pawn before any attack ability activates.
+	WeaponComponent = CreateDefaultSubobject<UMALWeaponComponent>(TEXT("WeaponComponent"));
+	ComboComponent = CreateDefaultSubobject<UMALComboComponent>(TEXT("ComboComponent"));
 }
 
 UAbilitySystemComponent* AMALCharacterBase::GetAbilitySystemComponent() const
@@ -54,6 +65,19 @@ UMALAttributeSet* AMALCharacterBase::GetMALAttributeSet() const
 	}
 
 	return nullptr;
+}
+
+ETeamAttitude::Type AMALCharacterBase::GetTeamAttitudeTowards(const AActor& Other) const
+{
+	// Deliberately not FGenericTeamId::GetAttitude: the engine's default solver only compares ids,
+	// so two unassigned characters come out as friendly and could never hurt each other.
+	const FGenericTeamId OtherTeam = FGenericTeamId::GetTeamIdentifier(&Other);
+	if (TeamId == FGenericTeamId::NoTeam || OtherTeam == FGenericTeamId::NoTeam)
+	{
+		return ETeamAttitude::Neutral;
+	}
+
+	return TeamId == OtherTeam ? ETeamAttitude::Friendly : ETeamAttitude::Hostile;
 }
 
 void AMALCharacterBase::InitializeAbilitySystem()
@@ -127,7 +151,44 @@ void AMALCharacterBase::BeginPlay()
 	{
 		ApplyDefaultAttributes();
 		GrantAbilities();
+
+		// Death attribution comes from the resolved hit: the attribute change delegate carries no
+		// effect spec, so it can never name the killer.
+		if (UWorld* World = GetWorld())
+		{
+			if (UMALCombatEventsSubsystem* CombatEvents = World->GetSubsystem<UMALCombatEventsSubsystem>())
+			{
+				CombatEvents->OnDamageResolved.AddUObject(this, &AMALCharacterBase::HandleDamageResolved);
+			}
+		}
 	}
+}
+
+void AMALCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// The subsystem and a PlayerState-owned ASC both outlive this pawn, so drop both listeners
+	// instead of leaving stale entries behind.
+	if (UWorld* World = GetWorld())
+	{
+		if (UMALCombatEventsSubsystem* CombatEvents = World->GetSubsystem<UMALCombatEventsSubsystem>())
+		{
+			CombatEvents->OnDamageResolved.RemoveAll(this);
+		}
+
+		// A death check still queued for next tick would call back into a pawn that is already
+		// tearing down.
+		World->GetTimerManager().ClearTimer(PendingDeathTimer);
+		bPendingDeathCheck = false;
+	}
+
+	if (UAbilitySystemComponent* BoundASC = BoundAbilitySystemComponent.Get())
+	{
+		BoundASC->GetGameplayAttributeValueChangeDelegate(UMALAttributeSet::GetHealthAttribute())
+			.Remove(HealthChangedDelegateHandle);
+		HealthChangedDelegateHandle.Reset();
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void AMALCharacterBase::PossessedBy(AController* NewController)
@@ -232,7 +293,56 @@ void AMALCharacterBase::HandleHealthChanged(const FOnAttributeChangeData& Data)
 	}
 
 	// The killing blow's instigator lives in the GameplayEffectSpec, which this delegate does not
-	// carry. Call HandleDeath yourself from the damage pipeline if the killer is needed.
+	// carry. UMALAttributeSet publishes the resolved hit right after folding damage into Health,
+	// so defer the decision by a tick: HandleDamageResolved then kills the character with the
+	// attribution, and this fallback only covers deaths that never went through the pipeline.
+	if (UWorld* World = GetWorld())
+	{
+		// One queued check is enough: it reads the final health value, so repeated changes before
+		// the tick fires (damage over time, several hits in one frame) must not queue more.
+		if (!bPendingDeathCheck)
+		{
+			bPendingDeathCheck = true;
+			PendingDeathTimer = World->GetTimerManager().SetTimerForNextTick(this, &AMALCharacterBase::HandlePendingDeath);
+		}
+	}
+}
+
+void AMALCharacterBase::HandleDamageResolved(const FMALDamageResolvedEvent& Event)
+{
+	if (!Event.bKillingBlow)
+	{
+		return;
+	}
+
+	// The event names the actor that owns the AttributeSet, which is the PlayerState for players
+	// and this character for enemies. Comparing against the avatar would miss every player death.
+	const UMALAttributeSet* CurrentAttributeSet = GetMALAttributeSet();
+	if (!CurrentAttributeSet || Event.Victim.Get() != CurrentAttributeSet->GetOwningActor())
+	{
+		return;
+	}
+
+	// HandleDeath is guarded, so a second blow landing in the same frame is a no-op.
+	HandleDeath(Event.Instigator);
+}
+
+void AMALCharacterBase::HandlePendingDeath()
+{
+	bPendingDeathCheck = false;
+
+	if (bIsDead || !HasAuthority())
+	{
+		// Attribution already handled it, or a respawn won the race.
+		return;
+	}
+
+	const UMALAttributeSet* CurrentAttributeSet = GetMALAttributeSet();
+	if (!CurrentAttributeSet || CurrentAttributeSet->GetHealth() > 0.0f || CurrentAttributeSet->GetMaxHealth() <= 0.0f)
+	{
+		return;
+	}
+
 	HandleDeath(nullptr);
 }
 
@@ -265,6 +375,13 @@ void AMALCharacterBase::ApplyDeathState(AActor* Killer)
 		// corpse would resume falling or sliding as soon as something pushes it.
 		Movement->StopMovementImmediately();
 		Movement->DisableMovement();
+	}
+
+	// Only the server may own the destroy timer: a client that destroys its own copy would
+	// desync from the machines that keep the actor alive.
+	if (HasAuthority() && CorpseLifeSpan > 0.0f)
+	{
+		SetLifeSpan(CorpseLifeSpan);
 	}
 
 	// Enemies: stop the behaviour tree, otherwise the dead pawn keeps patrolling or chasing.
@@ -311,9 +428,27 @@ void AMALCharacterBase::GrantAbilities()
 	// Clear first so respawn/re-possession cannot duplicate specs or input tags.
 	MALASC->ClearGrantedAbilities();
 
-	if (ClassDefinition)
+	// ClassDefinition is EditDefaultsOnly, so the class default is the only place it can be
+	// authored. An actor placed before the property existed can still carry a serialized empty
+	// override that reads as None, and the instance value then wins over the blueprint. Reading
+	// through the archetype keeps such an actor working; an enemy that loses its abilities here
+	// only walks up to its target and never swings.
+	const UMALClassDefinition* Definition = ClassDefinition;
+	if (!Definition)
 	{
-		for (const TObjectPtr<UMALAbilitySet>& AbilitySet : ClassDefinition->GrantedAbilitySets)
+		const AMALCharacterBase* ClassDefault = GetClass()->GetDefaultObject<AMALCharacterBase>();
+		Definition = ClassDefault ? ClassDefault->ClassDefinition.Get() : nullptr;
+	}
+
+	if (!Definition)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("MALCharacterBase::GrantAbilities %s: no ClassDefinition on the instance or the class default, so no abilities were granted"),
+			*GetName());
+	}
+	else
+	{
+		for (const TObjectPtr<UMALAbilitySet>& AbilitySet : Definition->GrantedAbilitySets)
 		{
 			if (AbilitySet)
 			{

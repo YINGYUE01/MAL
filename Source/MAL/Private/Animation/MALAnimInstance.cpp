@@ -26,11 +26,24 @@ void UMALAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		return;
 	}
 
-	UpdateMovementData(DeltaSeconds);
-	UpdateAimOffset(DeltaSeconds);
+	UpdateMovementData();
+	UpdateAimOffset();
 }
 
-void UMALAnimInstance::UpdateMovementData(float DeltaSeconds)
+void UMALAnimInstance::AdvanceMontagesOnly(float DeltaSeconds)
+{
+	if (DeltaSeconds <= 0.f)
+	{
+		return;
+	}
+
+	// Montage_Advance is protected, so a subclass is the only place it can be driven from. It
+	// touches nothing but the montage instances, which is exactly the state that has to keep
+	// moving while the mesh is held still.
+	Montage_Advance(DeltaSeconds);
+}
+
+void UMALAnimInstance::UpdateMovementData()
 {
 	const UCharacterMovementComponent* MovementComp = CachedCharacter->GetCharacterMovement();
 	if (!MovementComp)
@@ -58,7 +71,7 @@ void UMALAnimInstance::UpdateMovementData(float DeltaSeconds)
 	LocomotionState = CalculateLocomotionState(Speed);
 }
 
-void UMALAnimInstance::UpdateAimOffset(float DeltaSeconds)
+void UMALAnimInstance::UpdateAimOffset()
 {
 	if (const AController* Controller = CachedCharacter->GetController())
 	{
