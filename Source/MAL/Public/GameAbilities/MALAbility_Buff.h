@@ -14,7 +14,7 @@ class UAnimMontage;
  *
  * Self-buff ability: spends mana once and puts a timed damage-bonus GE on the caster.
  *
- * With ActivationMontage set, the ability lives until the cast animation finishes or is
+ * With AbilityMontage set, the ability lives until the cast animation finishes or is
  * interrupted; without one it applies the buff and ends on the same frame. The buff's lifetime
  * is unrelated to the ability's: the GE owns it, so expiry, dispels and the target's death all
  * remove it and the gameplay cue it spawned. No timer is needed here.
@@ -50,24 +50,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Buff|Effect", meta = (ClampMin = "0.1"))
 	float BuffDuration = 15.f;
 
-	/**
-	 * Cast montage played on activation. Leave it empty and the ability applies the buff and
-	 * ends on the same frame, which is the behaviour for buffs with no cast animation.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Buff|Animation")
-	TObjectPtr<UAnimMontage> ActivationMontage;
-
 	/** Applies BuffEffectClass to the caster with the configured magnitude and duration. */
 	void ApplyBuff();
 
-	// --- Montage callbacks ---
+	/**
+	 * Montage used to live on this class before it moved to UMALGameplayAbility::AbilityMontage.
+	 * Kept only so assets saved earlier keep their reference; PostLoad copies it across.
+	 */
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Set AbilityMontage instead."))
+	TObjectPtr<UAnimMontage> ActivationMontage;
 
-	UFUNCTION()
-	void OnMontageCompleted();
-
-	UFUNCTION()
-	void OnMontageInterrupted();
-
-	UFUNCTION()
-	void OnMontageCancelled();
+	virtual void PostLoad() override;
 };

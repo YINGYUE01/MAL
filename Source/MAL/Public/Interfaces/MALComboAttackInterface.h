@@ -17,9 +17,13 @@ class UMALComboAttackInterface : public UInterface
 /**
  * IMALComboAttackInterface
  *
- * Implemented by combo-driven abilities so montage AnimNotifies (combo window / lunge)
- * can call back into the ability that is currently driving the montage, without the
- * notifies coupling to a concrete ability class.
+ * Implemented by montage-driven melee abilities so AnimNotifies (combo window / lunge /
+ * weapon collision) can call back into the ability that is currently driving the montage,
+ * without the notifies coupling to a concrete ability class.
+ *
+ * Only the chaining methods are combo-specific. A single-swing ability implements the
+ * interface for the weapon/lunge hooks and leaves the window methods empty, which is why
+ * they have defaults rather than being pure virtual.
  */
 class MAL_API IMALComboAttackInterface
 {
@@ -27,10 +31,10 @@ class MAL_API IMALComboAttackInterface
 
 public:
 	/** Open the window during which the next combo hit can be chained. */
-	virtual void OpenComboWindow() = 0;
+	virtual void OpenComboWindow() {}
 
 	/** Close the chaining window. */
-	virtual void CloseComboWindow() = 0;
+	virtual void CloseComboWindow() {}
 
 	/** Trigger this step's forward lunge (called from the montage's lunge frame). */
 	virtual void TriggerLunge() = 0;

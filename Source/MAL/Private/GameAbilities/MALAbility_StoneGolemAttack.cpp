@@ -2,26 +2,14 @@
 
 #include "GameAbilities/MALAbility_StoneGolemAttack.h"
 
-#include "Combat/MALWeaponComponent.h"
+#include "Tags/MALGameplayTags.h"
 
 UMALAbility_StoneGolemAttack::UMALAbility_StoneGolemAttack()
 {
-	// The montage owns the hit window timing; there is nothing to configure here.
-}
+	const UMALGameplayTags* Tags = UMALGameplayTags::Get();
 
-void UMALAbility_StoneGolemAttack::DisableWeaponCollision()
-{
-	if (!IsActive())
-	{
-		return;
-	}
-
-	// Close the hit window only. The shared implementation also arms the combo's recovery
-	// release, which ends the ability a fraction of a second later and cuts the montage before
-	// its recovery tail plays. An AI swing has no follow-up input to cancel into, so the montage
-	// should simply play out and end on completion.
-	if (UMALWeaponComponent* WeaponComponent = GetWeaponComponent())
-	{
-		WeaponComponent->EndHitWindow();
-	}
+	// Same identity as the player's attack: the behaviour tree activates it by Ability.Attack and
+	// checks Status.Attacking before starting another swing. The input tag is never used by AI,
+	// but keeping it identical means one granted ability can be swapped for the other.
+	ConfigureAbility(Tags->Ability_Attack, Tags->Input_Attack, Tags->Status_Attacking);
 }

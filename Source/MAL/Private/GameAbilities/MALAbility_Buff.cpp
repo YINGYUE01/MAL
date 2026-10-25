@@ -2,7 +2,6 @@
 
 #include "GameAbilities/MALAbility_Buff.h"
 
-#include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "AbilitySystemComponent.h"
 #include "Animation/AnimMontage.h"
 #include "GameAbilities/MALBuffGameplayEffect.h"
@@ -14,16 +13,12 @@ UMALAbility_Buff::UMALAbility_Buff()
 {
 	const UMALGameplayTags* Tags = UMALGameplayTags::Get();
 
-	FGameplayTagContainer AssetTags;
-	AssetTags.AddTag(Tags->Ability_Buff);
-	SetAssetTags(AssetTags);
-
-	InputActivatedTag = Tags->Input_Buff;
-
-	// Owned for as long as the ability is active, which with a montage configured is exactly
-	// the length of the cast. AMALPlayerController checks this tag to lock Move/Jump so the
-	// character does not slide through the animation. Dropped automatically on EndAbility.
-	ActivationOwnedTags.AddTag(Tags->Status_Casting);
+	// Status.Casting is owned for as long as the ability is active, which with a montage
+	// configured is exactly the length of the cast. AMALPlayerController checks this tag to lock
+	// Move/Jump so the character does not slide through the animation. Blocking is left off: a
+	// second cast mid-animation used to be allowed, and that behaviour is not this change's to
+	// alter.
+	ConfigureAbility(Tags->Ability_Buff, Tags->Input_Buff, Tags->Status_Casting, /*bBlocksSameStatusActivation*/ false);
 
 	// Defaults so a bare Blueprint subclass works without wiring anything up. Both are meant
 	// to be pointed at assets in the project (GE_Buff_DamageUp / GE_BuffCost).
@@ -41,9 +36,8 @@ void UMALAbility_Buff::ActivateAbility(
 
 	// Pay first. CanActivateAbility already rejected unaffordable casts through CheckCost;
 	// committing here re-checks against the live value, which matters for predicted costs.
-	if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+	if (!CommitAbilityOrEnd(Handle, ActorInfo, ActivationInfo))
 	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
@@ -53,36 +47,46 @@ void UMALAbility_Buff::ActivateAbility(
 
 	// Nothing left to drive: the GE owns the buff from here on, and the GameplayCue it
 	// carries owns the aura. Buffs with no cast animation end on this frame.
-	if (!ActivationMontage)
+	if (!AbilityMontage)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
 	}
 
-	// Play the montage on its DefaultSlot (full body). Slot routing lives in the montage
-	// asset; the engine task handles replication, blend-out and cancellation correctly. The
-	// ability stays active for the length of the cast and ends on the callbacks below.
-	UAbilityTask_PlayMontageAndWait* PlayTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-		this,
-		NAME_None,
-		ActivationMontage,
-		1.0f,                  // Rate
-		NAME_None,             // StartSection
-		true,                  // bStopWhenAbilityEnds
-		1.0f,                  // AnimRootMotionTranslationScale
-		0.0f,                  // StartTimeSeconds
-		false);                // bAllowInterruptAfterBlendOut
-
-	if (!PlayTask)
+	// The base plays the montage on its DefaultSlot and ends the ability from its callbacks, so
+	// the ability lives exactly as long as the cast. Slot routing lives in the montage asset.
+	if (!PlayAbilityMontage())
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+	}
+}
+
+void UMALAbility_Buff::PostLoad()
+{
+	Super::PostLoad();
+
+	// AbilityMontage replaced ActivationMontage when the montage moved to the base class. Assets
+	// saved before that still carry the old property; copy it once so existing blueprints keep
+	// the cast animation they were configured with.
+	if (!ActivationMontage)
+	{
 		return;
 	}
 
-	PlayTask->OnCompleted.AddDynamic(this, &UMALAbility_Buff::OnMontageCompleted);
-	PlayTask->OnInterrupted.AddDynamic(this, &UMALAbility_Buff::OnMontageInterrupted);
-	PlayTask->OnCancelled.AddDynamic(this, &UMALAbility_Buff::OnMontageCancelled);
-	PlayTask->ReadyForActivation();
+	if (!AbilityMontage)
+	{
+		AbilityMontage = ActivationMontage;
+	}
+	else if (AbilityMontage != ActivationMontage)
+	{
+		// Both set: the new property is the one that is still visible in the details panel, so
+		// it wins. Logged because the old reference is about to be dropped for good.
+		UE_LOG(LogTemp, Warning,
+			TEXT("%s: both AbilityMontage (%s) and deprecated ActivationMontage (%s) are set; keeping AbilityMontage"),
+			*GetName(), *GetNameSafe(AbilityMontage), *GetNameSafe(ActivationMontage));
+	}
+
+	ActivationMontage = nullptr;
 }
 
 void UMALAbility_Buff::ApplyBuff()
@@ -109,19 +113,4 @@ void UMALAbility_Buff::ApplyBuff()
 	Spec.Data->SetDuration(BuffDuration, /*bLockDuration*/ true);
 
 	ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
-}
-
-void UMALAbility_Buff::OnMontageCompleted()
-{
-	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, false);
-}
-
-void UMALAbility_Buff::OnMontageInterrupted()
-{
-	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, true);
-}
-
-void UMALAbility_Buff::OnMontageCancelled()
-{
-	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, true);
 }

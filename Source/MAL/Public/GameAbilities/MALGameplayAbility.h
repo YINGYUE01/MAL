@@ -7,6 +7,8 @@
 #include "GameplayTagContainer.h"
 #include "InputActionValue.h"
 #include "MALGameplayAbility.generated.h"
+class UAbilityTask_PlayMontageAndWait;
+class UAnimMontage;
 class UCurveTable;
 class UTexture2D;
 
@@ -77,6 +79,73 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MAL|Ability|Level")
 	float GetLevelScaledValue(FName RowName, float DefaultValue = 0.0f) const;
 
+	// --- Shared setup ---
+
+	/**
+	 * One call for the three values every MAL ability repeats: the asset tag the ASC uses to
+	 * identify it, the input that activates it, and the status tag it owns while running.
+	 *
+	 * Call it from the subclass constructor. The status tag also becomes an activation blocker
+	 * when bBlocksSameStatusActivation is true, which is how two attacks refuse to overlap
+	 * without each ability naming the tag again.
+	 */
+	void ConfigureAbility(
+		FGameplayTag InAbilityTag,
+		FGameplayTag InInputTag,
+		FGameplayTag InStatusTag,
+		bool bBlocksSameStatusActivation = true);
+
+	// --- Montage ---
+
+	/**
+	 * Montage played while this ability is active.
+	 *
+	 * Empty is a valid configuration: the ability then does its work and ends without
+	 * animating. Combo-style abilities override GetMontageStartSection to pick an entry
+	 * section instead of touching this property.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Animation")
+	TObjectPtr<UAnimMontage> AbilityMontage;
+
+	/**
+	 * Play AbilityMontage and route its lifecycle into OnAbilityMontageEnded.
+	 *
+	 * The engine task already handles replication, blend-out and cancellation; owning the
+	 * three delegate bindings here is what stops every subclass from repeating them.
+	 *
+	 * @param StartSection  section to enter at; NAME_None starts at the beginning.
+	 * @return the running task, or null when no montage is set or the task could not be
+	 *         created (the caller decides whether that is fatal).
+	 */
+	UAbilityTask_PlayMontageAndWait* PlayAbilityMontage(FName StartSection = NAME_None);
+
+	/** Section PlayAbilityMontage enters at. Combo abilities return their first combo section. */
+	virtual FName GetMontageStartSection() const { return NAME_None; }
+
+	/**
+	 * The montage finished, was interrupted, or was cancelled.
+	 *
+	 * Default is "the montage is the ability": end on the spot, flagged as cancelled only when
+	 * something actually cut it short. Subclasses whose effects outlive the animation override
+	 * this instead of binding the task delegates themselves.
+	 */
+	virtual void OnAbilityMontageEnded(bool bInterrupted);
+
+	// --- Costs ---
+
+	/**
+	 * CommitAbility, and end the ability when it fails.
+	 *
+	 * Committing is the first thing every activation does, so the failure path (end, flagged
+	 * cancelled) is shared rather than copied.
+	 *
+	 * @return true when the cost and cooldown were paid and activation should continue.
+	 */
+	bool CommitAbilityOrEnd(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo);
+
 	// --- Input forwarding interface ---
 
 	/** Called when input is pressed (for charge mechanics, etc.) */
@@ -104,4 +173,17 @@ public:
 	virtual void InputReleased(const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo) override;
+
+protected:
+	// PlayAbilityMontage routes the task's three end states here. They stay separate from
+	// OnAbilityMontageEnded because AddDynamic needs parameterless UFUNCTIONs.
+
+	UFUNCTION()
+	void HandleMontageCompleted();
+
+	UFUNCTION()
+	void HandleMontageInterrupted();
+
+	UFUNCTION()
+	void HandleMontageCancelled();
 };
