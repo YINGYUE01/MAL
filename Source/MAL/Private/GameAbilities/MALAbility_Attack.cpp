@@ -413,6 +413,10 @@ void UMALAbility_Attack::OnWeaponHit(const FMALHitResult& HitResult)
 	Request.HitStopDuration = HitStopDuration;
 	Request.CameraShakeClass = HitCameraShakeClass;
 
+	Request.bKnockback = bCanKnockback;
+	Request.KnockbackDistance = KnockbackDistance;
+	Request.KnockbackDuration = KnockbackDuration;
+
 	// The executor owns damage, feedback and the WeaponHit event; this ability only supplies
 	// its tuning. Server-only, like the weapon component that called us.
 	UMALDamageExecutor::ExecuteWeaponHit(Request);

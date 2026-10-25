@@ -11,6 +11,8 @@
 #include "GameplayEffect.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/RootMotionSource.h"
 #include "GenericTeamAgentInterface.h"
 #include "Player/MALPlayerController.h"
 #include "Tags/MALGameplayTags.h"
@@ -35,6 +37,59 @@ bool UMALDamageExecutor::IsFriendly(const AActor* A, const AActor* B)
 	// NoTeam means "unassigned", not a side. Comparing it as a value would make every neutral
 	// actor friendly to every other neutral actor and disable combat against unconfigured pawns.
 	return TeamA != FGenericTeamId::NoTeam && TeamA == TeamB;
+}
+
+void UMALDamageExecutor::ApplyKnockback(AActor* Attacker, AActor* Victim, float Distance, float Duration)
+{
+	if (!Attacker || !Victim || Distance <= 0.0f || Duration <= 0.0f)
+	{
+		return;
+	}
+
+	ACharacter* VictimCharacter = Cast<ACharacter>(Victim);
+	if (!VictimCharacter)
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* Movement = VictimCharacter->GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	// Push along the attacker -> victim line, flattened. Using the victim's facing instead would
+	// launch them forward whenever they happened to be turned away from the blow.
+	FVector Direction = (VictimCharacter->GetActorLocation() - Attacker->GetActorLocation()).GetSafeNormal2D();
+	if (Direction.IsNearlyZero())
+	{
+		// Perfectly stacked actors have no line to push along; fall back to the attacker's facing.
+		Direction = Attacker->GetActorForwardVector().GetSafeNormal2D();
+	}
+
+	const FVector Start = VictimCharacter->GetActorLocation();
+
+	// MoveToForce rather than LaunchCharacter: the destination is exact, so an authored distance
+	// means the same thing on every victim regardless of its ground friction or walk speed.
+	TSharedPtr<FRootMotionSource_MoveToForce> Source = MakeShared<FRootMotionSource_MoveToForce>();
+	Source->InstanceName = TEXT("MALKnockback");
+	Source->AccumulateMode = ERootMotionAccumulateMode::Override;
+	Source->Priority = 500;
+	Source->Duration = Duration;
+	Source->StartLocation = Start;
+	Source->TargetLocation = Start + Direction * Distance;
+	// Caps the frame speed so a large distance in a short duration cannot tunnel through walls.
+	Source->bRestrictSpeedToExpected = true;
+
+	// Stop on arrival: inheriting the root motion velocity would let the victim keep sliding
+	// after the push was supposed to be over.
+	Source->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::SetVelocity;
+	Source->FinishVelocityParams.SetVelocity = FVector::ZeroVector;
+
+	// One push at a time: two overlapping sources on one victim fight over the frame's position
+	// and neither lands where it was asked to.
+	Movement->RemoveRootMotionSource(TEXT("MALKnockback"));
+	Movement->ApplyRootMotionSource(Source);
 }
 
 float UMALDamageExecutor::ExecuteWeaponHit(const FMALWeaponHitRequest& Request)
@@ -125,6 +180,14 @@ float UMALDamageExecutor::ExecuteWeaponHit(const FMALWeaponHitRequest& Request)
 	{
 		UE_LOG(LogTemp, Verbose, TEXT("UMALDamageExecutor: %s rejected the damage effect (no feedback fired)"), *HitActor->GetName());
 		return 0.0f;
+	}
+
+	// Damage landed. Push the victim before the presentation work so the number, the cue and the
+	// knockback all describe the same hit. A victim that died to this blow is skipped: death
+	// disables its movement component, so the push would never play out.
+	if (Request.bKnockback && !TargetASC->HasMatchingGameplayTag(UMALGameplayTags::Get()->Status_Dead))
+	{
+		ApplyKnockback(Avatar, HitActor, Request.KnockbackDistance, Request.KnockbackDuration);
 	}
 
 	// Confirmed hit: ask the attacker's owning client to play camera shake + local hit-stop.

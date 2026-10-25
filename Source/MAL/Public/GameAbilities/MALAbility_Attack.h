@@ -138,6 +138,29 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Damage")
 	FName WeaponCollisionSocketName = TEXT("weapon_collision");
 
+	// --- Knockback ---
+
+	/**
+	 * Whether a confirmed hit pushes the target away from the attacker.
+	 *
+	 * Applied by UMALDamageExecutor on the authority, so the distance means the same thing in
+	 * single player and on a listen server. A target killed by the blow is not pushed: death
+	 * disables its movement component, so the push would never play out.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Knockback")
+	bool bCanKnockback = false;
+
+	/** How far the target is pushed, in world units, along the attacker -> target line. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Knockback", meta = (ClampMin = "0.0", EditCondition = "bCanKnockback"))
+	float KnockbackDistance = 250.0f;
+
+	/**
+	 * Seconds the push takes. The distance is fixed, so this only decides how violent it reads:
+	 * short is an impact, long is a shove.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Knockback", meta = (ClampMin = "0.05", EditCondition = "bCanKnockback"))
+	float KnockbackDuration = 0.25f;
+
 	// --- Hit feedback (hit-stop + camera shake) ---
 
 	/** How long the attacker's local animation/movement freezes on a confirmed hit. */

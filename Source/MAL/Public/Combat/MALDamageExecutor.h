@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "GameplayTagContainer.h"
+#include "Templates/SubclassOf.h"
 #include "Combat/MALHitResult.h"
 #include "MALDamageExecutor.generated.h"
 
@@ -69,6 +70,18 @@ struct FMALWeaponHitRequest
 	/** Camera shake played on the attacker's client. */
 	UPROPERTY(BlueprintReadWrite, Category = "MAL|Combat|Feedback")
 	TSubclassOf<UCameraShakeBase> CameraShakeClass;
+
+	/** Whether the victim is pushed away from the attacker on a confirmed hit. */
+	UPROPERTY(BlueprintReadWrite, Category = "MAL|Combat|Knockback")
+	bool bKnockback = false;
+
+	/** Push distance in world units, measured along the attacker -> victim line. */
+	UPROPERTY(BlueprintReadWrite, Category = "MAL|Combat|Knockback")
+	float KnockbackDistance = 0.0f;
+
+	/** Seconds the push takes. Fixed distance, so this only sets how violent it looks. */
+	UPROPERTY(BlueprintReadWrite, Category = "MAL|Combat|Knockback")
+	float KnockbackDuration = 0.25f;
 };
 
 /**
@@ -107,4 +120,13 @@ public:
 	 * with the hit window about what counts as friendly fire.
 	 */
 	static bool IsFriendly(const AActor* A, const AActor* B);
+
+	/**
+	 * Push a character away from the attacker. Server-only; silently does nothing when the victim
+	 * cannot move (not a character, movement disabled by death, zero distance).
+	 *
+	 * The push is a fixed-distance root motion source rather than a launch impulse, so the
+	 * authored distance is what the victim actually travels regardless of its friction settings.
+	 */
+	static void ApplyKnockback(AActor* Attacker, AActor* Victim, float Distance, float Duration);
 };
