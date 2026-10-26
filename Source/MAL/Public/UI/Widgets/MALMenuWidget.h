@@ -31,6 +31,18 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|UI")
 	bool bPausesGame = false;
 
+	/**
+	 * Where the panel sits horizontally on screen: 0 is the left edge, 0.5 the centre, 1 the right
+	 * edge. Vertical is always centred, which is what keeps a side panel clear of the HUD's
+	 * top-left icons.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|UI")
+	float HorizontalAnchor = 0.f;
+
+	/** Gap between the panel and the screen edge it is anchored to, in slate units. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|UI")
+	float ScreenEdgeMargin = 48.f;
+
 protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "MAL|UI", meta = (DisplayName = "On Menu Activated"))
 	void OnMenuActivated();

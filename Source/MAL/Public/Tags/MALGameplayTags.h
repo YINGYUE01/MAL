@@ -183,6 +183,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
 	FGameplayTag Input_Buff;
 
+	/** Opens or closes the attribute menu; not an ability input. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
+	FGameplayTag Input_AttributeMenu;
+
 	/** Ability activated - used by ASC for input forwarding routing */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
 	FGameplayTag Input_AbilityActivated;

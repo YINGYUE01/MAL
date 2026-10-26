@@ -55,7 +55,7 @@ FText UMALUserWidget::Conv_FloatToText(float Value, int32 DecimalPlaces) const
 	return FText::AsNumber(Value, &Options);
 }
 
-void UMALUserWidget::SetDisplayValue(int32 InValue)
+void UMALUserWidget::SetDisplayValue(const FText& InValue)
 {
 	DisplayValue = InValue;
 
@@ -63,7 +63,7 @@ void UMALUserWidget::SetDisplayValue(int32 InValue)
 	// expected rather than an error; NativeConstruct republishes once the tree exists.
 	if (UTextBlock* ValueText = Cast<UTextBlock>(GetWidgetFromName(DisplayValueTextName)))
 	{
-		ValueText->SetText(FText::AsNumber(InValue));
+		ValueText->SetText(InValue);
 	}
 }
 

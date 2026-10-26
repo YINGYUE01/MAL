@@ -18,6 +18,7 @@
 #include "Engine/LocalPlayer.h"
 #include "UI/Framework/MALDamageNumberSubsystem.h"
 #include "UI/Framework/MALUISubsystem.h"
+#include "UI/Widgets/MALAttributeMenuWidget.h"
 
 AMALPlayerController::AMALPlayerController()
 {
@@ -104,6 +105,39 @@ void AMALPlayerController::TogglePauseMenu()
 	}
 }
 
+void AMALPlayerController::ToggleAttributeMenu()
+{
+	UE_LOG(LogTemp, Log, TEXT("MALInput: ToggleAttributeMenu class=%s"), AttributeMenuClass ? *AttributeMenuClass->GetName() : TEXT("None"));
+
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	UMALUISubsystem* UISubsystem = ULocalPlayer::GetSubsystem<UMALUISubsystem>(GetLocalPlayer());
+	if (!UISubsystem)
+	{
+		return;
+	}
+
+	// Only this panel's own key closes it. Popping whatever happens to be on top would make the
+	// attribute key a second, less predictable way to dismiss the pause menu.
+	if (const UMALMenuWidget* TopMenu = UISubsystem->GetTopMenu())
+	{
+		if (TopMenu->IsA<UMALAttributeMenuWidget>())
+		{
+			UISubsystem->PopMenu();
+			return;
+		}
+	}
+
+	if (AttributeMenuClass)
+	{
+		UMALMenuWidget* Pushed = UISubsystem->PushMenu(AttributeMenuClass);
+		UE_LOG(LogTemp, Log, TEXT("MALInput: pushed %s"), *GetNameSafe(Pushed));
+	}
+}
+
 void AMALPlayerController::CloseTopMenu()
 {
 	if (!IsLocalController())
@@ -127,6 +161,11 @@ void AMALPlayerController::SetupInputComponent()
 		if (InputConfig)
 		{
 			MALInput->BindInputConfig(InputConfig);
+
+			for (const FMALInputActionMapping& Mapping : InputConfig->AbilityInputActions)
+			{
+				UE_LOG(LogTemp, Log, TEXT("MALInput: bound %s -> %s"), *Mapping.InputTag.ToString(), *GetNameSafe(Mapping.Action));
+			}
 		}
 		else
 		{
@@ -151,6 +190,13 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 
 	UMALGameplayTags* GameplayTags = UMALGameplayTags::Get();
 
+	// Move and Look repeat every frame; only the discrete actions are worth a line each.
+	if (InputTag != GameplayTags->Input_Move && InputTag != GameplayTags->Input_Look)
+	{
+		UE_LOG(LogTemp, Log, TEXT("MALInput: tag=%s event=%s"), *InputTag.ToString(),
+			*StaticEnum<ETriggerEvent>()->GetNameStringByValue(static_cast<int64>(EventType)));
+	}
+
 	// Cache the ASC once; used for both movement lock and ability input routing.
 	UMALAbilitySystemComponent* MALASC = nullptr;
 	if (const AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>())
@@ -165,9 +211,16 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 		&& (MALASC->HasMatchingGameplayTag(GameplayTags->Status_Attacking)
 			|| MALASC->HasMatchingGameplayTag(GameplayTags->Status_Casting));
 
+	// A menu on screen owns the player's attention: walking or looking underneath it would drag
+	// the camera around behind the panel. The game keeps running while it is open, so this has
+	// to be filtered here rather than by pausing the world -- a paused world also stops input,
+	// and the key that opened the panel would never arrive to close it again.
+	const UMALUISubsystem* UISubsystem = ULocalPlayer::GetSubsystem<UMALUISubsystem>(GetLocalPlayer());
+	const bool bMenuOpen = UISubsystem && UISubsystem->IsMenuOpen();
+
 	if (InputTag == GameplayTags->Input_Move)
 	{
-		if (bMovementLocked)
+		if (bMovementLocked || bMenuOpen)
 		{
 			return;
 		}
@@ -186,13 +239,18 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 	}
 	else if (InputTag == GameplayTags->Input_Look)
 	{
+		if (bMenuOpen)
+		{
+			return;
+		}
+
 		const FVector2D LookInput = Value.Get<FVector2D>();
 		AddYawInput(LookInput.X);
 		AddPitchInput(LookInput.Y);
 	}
 	else if (InputTag == GameplayTags->Input_Jump)
 	{
-		if (bMovementLocked)
+		if (bMovementLocked || bMenuOpen)
 		{
 			return;
 		}
@@ -207,6 +265,14 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 			{
 				MyCharacter->StopJumping();
 			}
+		}
+	}
+	else if (InputTag == GameplayTags->Input_AttributeMenu)
+	{
+		// Started only: triggering on the repeat rate would flicker the panel while the key is held.
+		if (EventType == ETriggerEvent::Started)
+		{
+			ToggleAttributeMenu();
 		}
 	}
 	else

@@ -80,21 +80,24 @@ public:
 	FText Conv_FloatToText(float Value, int32 DecimalPlaces = 0) const;
 
 	/**
-	 * The number this widget shows, in its native form.
+	 * The value this widget shows, already formatted for display.
 	 *
 	 * One level deep on purpose. A view binding destination is a single property on a single
 	 * widget, so a row that wanted to print its value could not bind through
 	 * AttributePoints.Text: that path is two levels deep and the last hop, Text, belongs to
 	 * TextBlock rather than to the row's generated class. The binding is then dropped and the
-	 * row shows nothing. Rows bind here instead and the setter mirrors the number into their
-	 * text block.
+	 * row shows nothing. Rows bind here instead and the setter mirrors the text into their
+	 * number block.
+	 *
+	 * Formatted upstream rather than as a number: the panel prints whole stats, percentages
+	 * and multipliers from the same row widget, and only the caller knows which one it holds.
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "MAL|UI|MVVM", meta = (BlueprintSetter = "SetDisplayValue"))
-	int32 DisplayValue = 0;
+	FText DisplayValue;
 
 	/** Writes DisplayValue and republishes it into the row's number text block. */
 	UFUNCTION(BlueprintCallable, Category = "MAL|UI|MVVM")
-	void SetDisplayValue(int32 InValue);
+	void SetDisplayValue(const FText& InValue);
 
 	/**
 	 * The label this widget shows, in its native form.

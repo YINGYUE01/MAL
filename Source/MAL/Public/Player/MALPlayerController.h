@@ -53,6 +53,15 @@ public:
 	void TogglePauseMenu();
 
 	/**
+	 * Open the attribute menu, or close it when it is the one on top.
+	 *
+	 * Deliberately not "close whatever menu is open": pressing the attribute key while the
+	 * pause menu is up should not dismiss the pause menu.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MAL|UI")
+	void ToggleAttributeMenu();
+
+	/**
 	 * Pop the topmost menu. Callable from menu buttons: a paused world stops ticking input, so the
 	 * close path has to come from the UI itself rather than a gameplay input action.
 	 */
@@ -103,6 +112,10 @@ protected:
 	/** Menu pushed by TogglePauseMenu. Leave empty to disable the pause menu. */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI")
 	TSubclassOf<UMALMenuWidget> PauseMenuClass;
+
+	/** Menu pushed by ToggleAttributeMenu. Leave empty to disable the attribute panel. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI")
+	TSubclassOf<UMALMenuWidget> AttributeMenuClass;
 
 	/**
 	 * Widget spawned once per floating damage number.

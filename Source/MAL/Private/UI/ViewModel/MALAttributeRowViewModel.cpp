@@ -4,10 +4,24 @@
 
 #include "UObject/UnrealType.h"
 
-void UMALAttributeRowViewModel::Initialize(EMALPrimaryStat InStat)
+void UMALAttributeRowViewModel::InitializePrimary(EMALPrimaryStat InStat)
 {
 	PrimaryStat = InStat;
-	Attribute = MALGetPrimaryAttribute(InStat);
+	bCanSpendPoints = true;
+	InitializeAttribute(MALGetPrimaryAttribute(InStat), EMALStatFormat::Integer);
+}
+
+void UMALAttributeRowViewModel::InitializeSecondary(EMALSecondaryStat InStat)
+{
+	// The primary stat is left at its sentinel: a derived row never reports one it could spend on.
+	bCanSpendPoints = false;
+	InitializeAttribute(MALGetSecondaryAttribute(InStat), MALGetSecondaryStatFormat(InStat));
+}
+
+void UMALAttributeRowViewModel::InitializeAttribute(const FGameplayAttribute& InAttribute, EMALStatFormat InFormat)
+{
+	Attribute = InAttribute;
+	Format = InFormat;
 
 	// GetDisplayNameText resolves to the DisplayName metadata on the property and falls back to
 	// the property name, so every stat gets a readable label without a table here.
@@ -18,14 +32,33 @@ void UMALAttributeRowViewModel::Initialize(EMALPrimaryStat InStat)
 	// Set through the macro so a view that is already bound picks the label up; a plain
 	// assignment would leave it showing whatever it had at bind time.
 	UE_MVVM_SET_PROPERTY_VALUE(AttributeName, Label);
+
+	// Painted before an ability system exists so the row never shows an empty right column.
+	ApplyValue(0.0f);
+}
+
+void UMALAttributeRowViewModel::ApplyValue(float Value)
+{
+	const FText Formatted = MALFormatStatValue(Value, Format);
+	UE_MVVM_SET_PROPERTY_VALUE(DisplayValue, Formatted);
+
+	// Raised as well as set: see ValueChanged for why the binding alone is not enough.
+	if (ValueChanged)
+	{
+		ValueChanged(Formatted);
+	}
 }
 
 void UMALAttributeRowViewModel::RequestAddPoint()
 {
-	if (AddPointRequested)
+	// A derived row is shown, not spent on. The menu never wires its button; this covers a
+	// blueprint that calls the function directly.
+	if (!bCanSpendPoints || !AddPointRequested)
 	{
-		AddPointRequested(PrimaryStat);
+		return;
 	}
+
+	AddPointRequested(PrimaryStat);
 }
 
 void UMALAttributeRowViewModel::OnAbilitySystemReady(UAbilitySystemComponent* InAbilitySystemComponent)
@@ -38,10 +71,10 @@ void UMALAttributeRowViewModel::OnAbilitySystemReady(UAbilitySystemComponent* In
 		return;
 	}
 
+	// BindAttribute primes the callback with the current reading, so the row starts out correct
+	// without reading the attribute a second time here.
 	BindAttribute(Attribute, [this](const FOnAttributeChangeData& Data)
 	{
-		// The attribute is a float by necessity and the row prints whole numbers, so the
-		// rounding lives here instead of in every consumer.
-		UE_MVVM_SET_PROPERTY_VALUE(DisplayValue, FMath::RoundToInt(Data.NewValue));
+		ApplyValue(Data.NewValue);
 	});
 }
