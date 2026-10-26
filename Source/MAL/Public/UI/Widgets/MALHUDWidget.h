@@ -8,7 +8,9 @@
 #include "UI/Widgets/MALUserWidget.h"
 #include "MALHUDWidget.generated.h"
 
+class UAbilitySystemComponent;
 class UMALAbilityBarViewModel;
+class UMALProgressionViewModel;
 class UMALStatViewModel;
 class APlayerController;
 
@@ -37,6 +39,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MAL|UI")
 	UMALAbilityBarViewModel* GetAbilityBarViewModel() const { return AbilityBarViewModel; }
 
+	UFUNCTION(BlueprintPure, Category = "MAL|UI")
+	UMALProgressionViewModel* GetProgressionViewModel() const { return ProgressionViewModel; }
+
 protected:
 	/**
 	 * Optional source name to target precisely. Leave empty (the default) to match the source by
@@ -50,6 +55,10 @@ protected:
 	/** Same contract as StatViewModelName, for the ability bar view model. */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|MVVM")
 	FName AbilityBarViewModelName = NAME_None;
+
+	/** Same contract as StatViewModelName, for the progression view model. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|MVVM")
+	FName ProgressionViewModelName = NAME_None;
 
 	/**
 	 * Input tags drawn on the ability bar, in screen order.
@@ -88,12 +97,33 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|UI")
 	TObjectPtr<UMALAbilityBarViewModel> AbilityBarViewModel;
 
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|UI")
+	TObjectPtr<UMALProgressionViewModel> ProgressionViewModel;
+
 	virtual void NativeDestruct() override;
 
 private:
 	void TryBindAbilitySystem();
 	void StopRetryTimer();
 	void ArmRetryTimer(float Interval);
+
+	/**
+	 * Hand the progression view model to nested widgets that cannot inherit it.
+	 *
+	 * A nested widget's view is built by Show(), before this HUD has a source to inherit from,
+	 * so a child that expects the progression view model through its parent context ends up
+	 * bound to nothing. Publishing directly bypasses that ordering.
+	 */
+	void PublishProgressionToNestedWidgets();
+
+	/**
+	 * Forward the ability system to widgets nested in this HUD's own tree.
+	 *
+	 * Such a widget constructs before the PlayerState (and with it the ASC) has replicated
+	 * in, so it cannot resolve the ASC itself without duplicating this HUD's retry loop.
+	 * Called from TryBindAbilitySystem, which is also where a re-possession rebinds it.
+	 */
+	void PublishAbilitySystemToNestedWidgets(UAbilitySystemComponent* InAbilitySystemComponent);
 
 	TWeakObjectPtr<APlayerController> OwningPlayerController;
 	FTimerHandle BindRetryTimer;

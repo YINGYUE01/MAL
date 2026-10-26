@@ -88,6 +88,17 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Class")
 	TObjectPtr<UMALClassDefinition> ClassDefinition;
 
+	/**
+	 * ClassDefinition, falling back to the class default when the instance carries none.
+	 *
+	 * The property is EditDefaultsOnly, so the class default is the only place it can be authored.
+	 * An actor placed before the property existed can still carry a serialized empty override that
+	 * reads as None, and the instance value then wins over the blueprint. Reading through the
+	 * archetype keeps such an actor working; an enemy that loses its abilities this way only walks
+	 * up to its target and never swings.
+	 */
+	const UMALClassDefinition* GetClassDefinition() const;
+
 	/** True on the server and on every client once health reached zero. */
 	UFUNCTION(BlueprintPure, Category = "MAL|Death")
 	bool IsDead() const { return bIsDead; }
@@ -128,6 +139,27 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Death")
 	bool bKeepCapsuleCollisionOnDeath = false;
+
+	// --- Progression ---
+
+	/**
+	 * Experience awarded to whoever lands the killing blow, authored on the class default.
+	 *
+	 * Zero is the right default for the player's own pawn: only enemies publish a reward, and
+	 * progression only ever reads this off the victim.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Progression", meta = (ClampMin = "0"))
+	int32 ExperienceReward = 0;
+
+	/**
+	 * The reward a killer is actually paid for this character.
+	 *
+	 * Read this instead of ExperienceReward. Instances placed before the property existed carry a
+	 * serialized zero of their own, and an instance value outranks the class default even when it
+	 * was never authored by hand. Treat that zero as "nothing written here" and fall back to the
+	 * class default, so a reward authored on the blueprint reaches every instance.
+	 */
+	int32 GetExperienceReward() const;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttribute;
@@ -184,6 +216,9 @@ protected:
 
 	/** Server only: apply default attribute GEs once. */
 	virtual void ApplyDefaultAttributes();
+
+	/** Apply one of the default attribute effects, with Level as the spec level. */
+	void ApplyAttributeGE(TSubclassOf<UGameplayEffect> GEClass, float Level);
 
 	/** Server only: clear previously granted specs and grant ClassDefinition's ability sets. */
 	virtual void GrantAbilities();

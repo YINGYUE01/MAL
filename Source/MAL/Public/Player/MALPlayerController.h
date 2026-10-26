@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AbilitySystem/Attributes/MALPrimaryStat.h"
 #include "GameFramework/PlayerController.h"
 #include "InputActionValue.h"
 //#include "InputActionEvents.h"
@@ -57,6 +58,29 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MAL|UI")
 	void CloseTopMenu();
+
+	/**
+	 * Debug: bank attribute points on the local player.
+	 *
+	 * The panel that spends them is a UI task of its own, so this keeps the C++ side exercisable
+	 * from the console until it exists.
+	 */
+	UFUNCTION(Exec)
+	void MALAddAttributePoints(int32 Count);
+
+	/** Debug: spend banked points on a primary stat: Vigor, Strength, Dexterity, Endurance or Spirit. */
+	UFUNCTION(Exec)
+	void MALSpendAttributePoint(const FString& StatName, int32 Count = 1);
+
+	/**
+	 * Client -> server: put Count banked points into a primary stat.
+	 *
+	 * The attribute panel lives on the client but the primaries are only writable on the
+	 * authority, so a row's button has to cross the wire. Reliable: a dropped click would leave
+	 * the row showing a value the server never agreed to.
+	 */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "MAL|Progression")
+	void ServerSpendAttributePoint(EMALPrimaryStat Stat, int32 Count);
 
 protected:
 	virtual void BeginPlay() override;

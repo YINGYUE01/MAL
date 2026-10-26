@@ -7,6 +7,7 @@
 #include "Combat/MALWeaponComponent.h"
 #include "Combat/MALComboComponent.h"
 #include "Components/MALAbilitySystemComponent.h"
+#include "Components/MALProgressionComponent.h"
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
 #include "Data/MALClassDefinition.h"
 #include "Data/MALAbilitySet.h"
@@ -67,6 +68,30 @@ UMALAttributeSet* AMALCharacterBase::GetMALAttributeSet() const
 	}
 
 	return nullptr;
+}
+
+const UMALClassDefinition* AMALCharacterBase::GetClassDefinition() const
+{
+	if (ClassDefinition)
+	{
+		return ClassDefinition;
+	}
+
+	const AMALCharacterBase* ClassDefault = GetClass()->GetDefaultObject<AMALCharacterBase>();
+	return ClassDefault ? ClassDefault->ClassDefinition.Get() : nullptr;
+}
+
+int32 AMALCharacterBase::GetExperienceReward() const
+{
+	if (ExperienceReward > 0)
+	{
+		return ExperienceReward;
+	}
+
+	// Instances were placed, and serialized, while the reward still lived at zero everywhere.
+	// Their own copy keeps winning over a later edit on the class default, so read through it.
+	const AMALCharacterBase* ClassDefault = GetClass()->GetDefaultObject<AMALCharacterBase>();
+	return ClassDefault ? ClassDefault->ExperienceReward : 0;
 }
 
 ETeamAttitude::Type AMALCharacterBase::GetTeamAttitudeTowards(const AActor& Other) const
@@ -237,37 +262,65 @@ void AMALCharacterBase::ApplyDefaultAttributes()
 		return;
 	}
 
+	if (!GetMALAbilitySystemComponent())
+	{
+		// Left unmarked on purpose: PossessedBy runs this again once the ASC exists, and marking it
+		// applied here would leave the character with no attributes at all.
+		return;
+	}
+
+	// Read for the log only. The primaries no longer scale with it: row 1 of the growth curve is
+	// the level 1 baseline, and every level after that is paid out as attribute points instead.
+	int32 Level = 1;
+	if (const AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>())
+	{
+		Level = MALPS->GetProgressionLevel();
+	}
+
+	// Order matters: Primary -> Secondary -> Standalone (Standalone may read Max* values).
+	// The primary effect is pinned to level 1 so the baseline is the same whatever level the
+	// character spawns at; the other two are AttributeBased and ignore the spec level.
+	ApplyAttributeGE(DefaultPrimaryAttribute, 1.0f);
+	ApplyAttributeGE(DefaultSecondaryAttribute, 1.0f);
+	ApplyAttributeGE(DefaultStandaloneAttribute, 1.0f);
+
+	// The primary effect just overwrote the base values, so points already spent have to go back
+	// on top of the baseline. Enemies have no PlayerState and skip this.
+	if (AMALPlayerState* OwningPlayerState = GetPlayerState<AMALPlayerState>())
+	{
+		if (UMALProgressionComponent* Progression = OwningPlayerState->GetProgressionComponent())
+		{
+			Progression->ReapplyAttributePoints();
+		}
+	}
+
+	MarkDefaultAttributesApplied();
+
+	UE_LOG(LogTemp, Verbose, TEXT("MALCharacterBase::ApplyDefaultAttributes %s: done (level %d)"), *GetName(), Level);
+}
+
+void AMALCharacterBase::ApplyAttributeGE(TSubclassOf<UGameplayEffect> GEClass, float Level)
+{
+	if (!GEClass)
+	{
+		return;
+	}
+
 	UMALAbilitySystemComponent* MALASC = GetMALAbilitySystemComponent();
 	if (!MALASC)
 	{
 		return;
 	}
 
-	auto ApplyDefaultGE = [this, MALASC](TSubclassOf<UGameplayEffect> GEClass)
+	FGameplayEffectContextHandle Context = MALASC->MakeEffectContext();
+	Context.AddSourceObject(this);
+
+	// A spec level below 1 is not meaningful for ScalableFloat magnitude lookups.
+	FGameplayEffectSpecHandle SpecHandle = MALASC->MakeOutgoingSpec(GEClass, FMath::Max(Level, 1.0f), Context);
+	if (SpecHandle.IsValid())
 	{
-		if (!GEClass)
-		{
-			return;
-		}
-
-		FGameplayEffectContextHandle Context = MALASC->MakeEffectContext();
-		Context.AddSourceObject(this);
-
-		FGameplayEffectSpecHandle SpecHandle = MALASC->MakeOutgoingSpec(GEClass, 1.0f, Context);
-		if (SpecHandle.IsValid())
-		{
-			MALASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-		}
-	};
-
-	// Order matters: Primary -> Secondary -> Standalone (Standalone may read Max* values).
-	ApplyDefaultGE(DefaultPrimaryAttribute);
-	ApplyDefaultGE(DefaultSecondaryAttribute);
-	ApplyDefaultGE(DefaultStandaloneAttribute);
-
-	MarkDefaultAttributesApplied();
-
-	UE_LOG(LogTemp, Verbose, TEXT("MALCharacterBase::ApplyDefaultAttributes %s: done"), *GetName());
+		MALASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	}
 }
 
 void AMALCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -465,18 +518,7 @@ void AMALCharacterBase::GrantAbilities()
 	// Clear first so respawn/re-possession cannot duplicate specs or input tags.
 	MALASC->ClearGrantedAbilities();
 
-	// ClassDefinition is EditDefaultsOnly, so the class default is the only place it can be
-	// authored. An actor placed before the property existed can still carry a serialized empty
-	// override that reads as None, and the instance value then wins over the blueprint. Reading
-	// through the archetype keeps such an actor working; an enemy that loses its abilities here
-	// only walks up to its target and never swings.
-	const UMALClassDefinition* Definition = ClassDefinition;
-	if (!Definition)
-	{
-		const AMALCharacterBase* ClassDefault = GetClass()->GetDefaultObject<AMALCharacterBase>();
-		Definition = ClassDefault ? ClassDefault->ClassDefinition.Get() : nullptr;
-	}
-
+	const UMALClassDefinition* Definition = GetClassDefinition();
 	if (!Definition)
 	{
 		UE_LOG(LogTemp, Warning,

@@ -4,12 +4,14 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
+#include "Blueprint/WidgetTree.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Tags/MALGameplayTags.h"
 #include "TimerManager.h"
 #include "UI/ViewModel/MALAbilityBarViewModel.h"
+#include "UI/ViewModel/MALProgressionViewModel.h"
 #include "UI/ViewModel/MALStatViewModel.h"
 
 namespace
@@ -69,7 +71,79 @@ void UMALHUDWidget::InitializeForPlayer(APlayerController* InPlayerController)
 		SetViewModelByName(AbilityBarViewModelName, AbilityBarViewModel);
 	}
 
+	if (!ProgressionViewModel)
+	{
+		ProgressionViewModel = NewObject<UMALProgressionViewModel>(this);
+	}
+
+	if (ProgressionViewModelName.IsNone())
+	{
+		SetViewModelByClass(ProgressionViewModel);
+	}
+	else
+	{
+		SetViewModelByName(ProgressionViewModelName, ProgressionViewModel);
+	}
+
+	PublishProgressionToNestedWidgets();
+
 	TryBindAbilitySystem();
+}
+
+void UMALHUDWidget::PublishProgressionToNestedWidgets()
+{
+	if (!WidgetTree)
+	{
+		return;
+	}
+
+	// Show() runs before InitializeForPlayer and is what realises the widget tree, so a nested
+	// widget builds its view while this HUD's sources are still empty. A child that names the
+	// progression source as a parent-context reference resolves that link against an empty
+	// parent and never re-resolves, leaving its bindings pushing nothing. Publishing the view
+	// model straight into the child gives it a source to read; a child without a source of this
+	// type rejects the call and keeps its own assignment.
+	TArray<UWidget*> NestedWidgets;
+	WidgetTree->GetAllWidgets(NestedWidgets);
+
+	for (UWidget* NestedWidget : NestedWidgets)
+	{
+		UMALUserWidget* MALWidget = Cast<UMALUserWidget>(NestedWidget);
+		if (!MALWidget || MALWidget == this)
+		{
+			continue;
+		}
+
+		if (MALWidget->SetViewModelByClass(ProgressionViewModel))
+		{
+			UE_LOG(LogTemp, Log, TEXT("UMALHUDWidget: published the progression view model to %s."),
+				*GetNameSafe(MALWidget));
+		}
+	}
+}
+
+void UMALHUDWidget::PublishAbilitySystemToNestedWidgets(UAbilitySystemComponent* InAbilitySystemComponent)
+{
+	if (!WidgetTree || !InAbilitySystemComponent)
+	{
+		return;
+	}
+
+	// Same sweep as PublishProgressionToNestedWidgets, different payload: a nested widget that
+	// follows attributes gets the ASC here instead of polling for it on its own.
+	TArray<UWidget*> NestedWidgets;
+	WidgetTree->GetAllWidgets(NestedWidgets);
+
+	for (UWidget* NestedWidget : NestedWidgets)
+	{
+		UMALUserWidget* MALWidget = Cast<UMALUserWidget>(NestedWidget);
+		if (!MALWidget || MALWidget == this)
+		{
+			continue;
+		}
+
+		MALWidget->NativeAbilitySystemReady(InAbilitySystemComponent);
+	}
 }
 
 void UMALHUDWidget::TryBindAbilitySystem()
@@ -99,6 +173,8 @@ void UMALHUDWidget::TryBindAbilitySystem()
 	{
 		StatViewModel->SetAbilitySystemComponent(AbilitySystemComponent);
 		AbilityBarViewModel->SetAbilitySystemComponent(AbilitySystemComponent);
+		ProgressionViewModel->SetAbilitySystemComponent(AbilitySystemComponent);
+		PublishAbilitySystemToNestedWidgets(AbilitySystemComponent);
 		StopRetryTimer();
 		return;
 	}
@@ -163,6 +239,11 @@ void UMALHUDWidget::NativeDestruct()
 	if (AbilityBarViewModel)
 	{
 		AbilityBarViewModel->SetAbilitySystemComponent(nullptr);
+	}
+
+	if (ProgressionViewModel)
+	{
+		ProgressionViewModel->SetAbilitySystemComponent(nullptr);
 	}
 
 	Super::NativeDestruct();

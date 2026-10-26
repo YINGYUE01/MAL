@@ -11,6 +11,8 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
 #include "Components/MALAbilitySystemComponent.h"
+#include "Components/MALProgressionComponent.h"
+#include "AbilitySystem/Attributes/MALPrimaryStat.h"
 #include "Player/MALPlayerState.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Engine/LocalPlayer.h"
@@ -235,4 +237,73 @@ void AMALPlayerController::PostProcessInput(const float DeltaTime, const bool bG
 	}
 
 	Super::PostProcessInput(DeltaTime, bGamePaused);
+}
+
+void AMALPlayerController::MALAddAttributePoints(int32 Count)
+{
+	if (AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>())
+	{
+		if (UMALProgressionComponent* Progression = MALPS->GetProgressionComponent())
+		{
+			Progression->GrantAttributePoints(Count);
+			UE_LOG(LogTemp, Log, TEXT("MALAddAttributePoints: %d banked, %d unspent."), Count, Progression->GetAttributePoints());
+		}
+	}
+}
+
+void AMALPlayerController::MALSpendAttributePoint(const FString& StatName, int32 Count)
+{
+	// String-to-enum by hand rather than through UEnum: the editor-only lookup is not there in a
+	// packaged build, and five names are not worth a table.
+	EMALPrimaryStat Stat = EMALPrimaryStat::Vigor;
+	if (StatName.Equals(TEXT("Vigor"), ESearchCase::IgnoreCase))
+	{
+		Stat = EMALPrimaryStat::Vigor;
+	}
+	else if (StatName.Equals(TEXT("Strength"), ESearchCase::IgnoreCase))
+	{
+		Stat = EMALPrimaryStat::Strength;
+	}
+	else if (StatName.Equals(TEXT("Dexterity"), ESearchCase::IgnoreCase))
+	{
+		Stat = EMALPrimaryStat::Dexterity;
+	}
+	else if (StatName.Equals(TEXT("Endurance"), ESearchCase::IgnoreCase))
+	{
+		Stat = EMALPrimaryStat::Endurance;
+	}
+	else if (StatName.Equals(TEXT("Spirit"), ESearchCase::IgnoreCase))
+	{
+		Stat = EMALPrimaryStat::Spirit;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALSpendAttributePoint: unknown stat '%s'. Use Vigor, Strength, Dexterity, Endurance or Spirit."), *StatName);
+		return;
+	}
+
+	// Same entry point the attribute panel uses, so the console exercises the path the UI takes
+	// rather than a parallel one that could drift from it.
+	ServerSpendAttributePoint(Stat, Count);
+}
+
+void AMALPlayerController::ServerSpendAttributePoint_Implementation(EMALPrimaryStat Stat, int32 Count)
+{
+	AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>();
+	UMALProgressionComponent* Progression = MALPS ? MALPS->GetProgressionComponent() : nullptr;
+	if (!Progression)
+	{
+		return;
+	}
+
+	if (!Progression->SpendAttributePoints(Stat, Count))
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("ServerSpendAttributePoint: %d point(s) on stat %d refused (not enough unspent, or at the class cap)."),
+			Count, static_cast<int32>(Stat));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("ServerSpendAttributePoint: %d -> stat %d, %d unspent left."),
+		Count, static_cast<int32>(Stat), Progression->GetAttributePoints());
 }
