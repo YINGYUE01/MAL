@@ -8,6 +8,7 @@
 #include "Combat/MALHitResult.h"
 #include "Templates/SubclassOf.h"
 #include "GameplayTagContainer.h"
+#include "Engine/EngineTypes.h"
 #include "MALAbility_MeleeAttack.generated.h"
 
 class UAbilityTask_ApplyRootMotionMoveToForce;
@@ -76,6 +77,35 @@ protected:
 
 	/** Combo step stamped on the hit window. Flat melee abilities stay at 0. */
 	virtual int32 GetHitComboStep() const { return 0; }
+
+	// --- Recovery ---
+
+	/**
+	 * Seconds between the hit window closing and the ability releasing movement.
+	 *
+	 * The tail of a swing montage is recovery the player is not going to watch. Holding
+	 * Status.Attacking through it locks Move/Jump (see AMALPlayerController) and keeps
+	 * ActivationBlockedTags up, so the next input feels unresponsive. Ending here lets the
+	 * montage blend out while the character is already free again.
+	 *
+	 * Negative disables this release. Named apart from UMALAbility_Attack's
+	 * RecoveryReleaseDelay on purpose: the combo class owns its own window-aware release, and
+	 * two same-named properties would shadow. UMALAbility_StoneGolemAttack opts out because an
+	 * AI swing is meant to play out in full.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Melee|Recovery", meta = (ClampMin = "-1.0", ClampMax = "1.5"))
+	float PostHitReleaseDelay = 0.3f;
+
+	/** Start the release countdown; called when the hit window closes. */
+	void SchedulePostHitRelease();
+
+	/** Drop a pending release: a new hit window means the swing is still going. */
+	void CancelPostHitRelease();
+
+	/** Timer callback: end the ability so movement and the next input are free again. */
+	void HandlePostHitRelease();
+
+	FTimerHandle PostHitReleaseTimer;
 
 	// --- Damage ---
 

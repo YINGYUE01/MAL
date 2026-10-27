@@ -17,6 +17,10 @@ UMALAbility_Attack::UMALAbility_Attack()
 	// tag doubles as an activation blocker, which is what stops two swings overlapping.
 	ConfigureAbility(Tags->Ability_Attack, Tags->Input_Attack, Tags->Status_Attacking);
 
+	// The combo component already releases recovery, and it does so in a window-aware way: an
+	// extra release on the melee base would end the ability between two steps.
+	PostHitReleaseDelay = -1.f;
+
 	// Default 4-step combo section names (override in Blueprint to match the montage).
 	ComboSections = { FName("Combo1"), FName("Combo2"), FName("Combo3"), FName("Combo4") };
 }

@@ -8,6 +8,7 @@
 #include "Character/MALCharacterBase.h"
 #include "Combat/MALDamageExecutor.h"
 #include "Combat/MALWeaponComponent.h"
+#include "Engine/World.h"
 #include "GameAbilities/MALHitCameraShake.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -15,6 +16,7 @@
 #include "GameFramework/RootMotionSource.h"
 #include "GameplayTagContainer.h"
 #include "Tags/MALGameplayTags.h"
+#include "TimerManager.h"
 
 UMALAbility_MeleeAttack::UMALAbility_MeleeAttack()
 {
@@ -120,6 +122,10 @@ void UMALAbility_MeleeAttack::EndAbility(
 			*GetName(), *GetNameSafe(AbilityMontage));
 	}
 
+	// The ability is ending on any path (montage finished, cancelled, released below), so a
+	// pending release has nothing left to do.
+	CancelPostHitRelease();
+
 	// Stop any in-flight lunge explicitly; the task is also destroyed by EndAbility, but
 	// ending it here guarantees the root motion source is removed before the movement mode
 	// is restored.
@@ -150,6 +156,10 @@ void UMALAbility_MeleeAttack::EnableWeaponCollision()
 {
 	bHitWindowOpened = true;
 
+	// A new window means this activation is still swinging: a release armed by a previous
+	// window would end the ability in the middle of the montage.
+	CancelPostHitRelease();
+
 	// The component owns the collision state and the per-swing hit list; the ability only says
 	// when a swing starts. StartHitWindow is a no-op on clients.
 	if (UMALWeaponComponent* WeaponComponent = GetWeaponComponent())
@@ -160,12 +170,61 @@ void UMALAbility_MeleeAttack::EnableWeaponCollision()
 
 void UMALAbility_MeleeAttack::DisableWeaponCollision()
 {
-	// Closes the window and nothing else. Anything the ability wants to do with the recovery
-	// tail after the hit window (combo release, AI combo-free playback) belongs in an override.
+	// Close the window first: the release below must not fire while hits are still resolving.
 	if (UMALWeaponComponent* WeaponComponent = GetWeaponComponent())
 	{
 		WeaponComponent->EndHitWindow();
 	}
+
+	// Everything left in the montage is recovery. Releasing here keeps the character free
+	// while the tail blends out, instead of locking it for animation nobody watches.
+	SchedulePostHitRelease();
+}
+
+void UMALAbility_MeleeAttack::SchedulePostHitRelease()
+{
+	// Negative means "play the montage out"; subclasses that own their recovery opt out here.
+	if (PostHitReleaseDelay < 0.f)
+	{
+		return;
+	}
+
+	if (PostHitReleaseDelay == 0.f)
+	{
+		HandlePostHitRelease();
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			PostHitReleaseTimer, this, &UMALAbility_MeleeAttack::HandlePostHitRelease, PostHitReleaseDelay, false);
+	}
+}
+
+void UMALAbility_MeleeAttack::CancelPostHitRelease()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(PostHitReleaseTimer);
+	}
+
+	PostHitReleaseTimer.Invalidate();
+}
+
+void UMALAbility_MeleeAttack::HandlePostHitRelease()
+{
+	PostHitReleaseTimer.Invalidate();
+
+	if (!IsActive())
+	{
+		return;
+	}
+
+	// EndAbility stops the montage through bStopWhenAbilityEnds, so the tail fades out on the
+	// montage's own blend-out time instead of snapping. Status.Attacking drops with the
+	// ability, which is exactly what AMALPlayerController gates Move and Jump on.
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, false);
 }
 
 UMALWeaponComponent* UMALAbility_MeleeAttack::GetWeaponComponent() const

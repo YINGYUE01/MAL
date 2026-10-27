@@ -93,6 +93,7 @@ public:
 	 * this is the seam for things that are not attribute-shaped: level-up audio, a gameplay cue,
 	 * an unlock check.
 	 */
+	 
 	FMALLevelChangedSignature OnLevelChanged;
 
 	/**
