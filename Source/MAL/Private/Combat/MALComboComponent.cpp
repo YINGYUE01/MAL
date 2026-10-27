@@ -175,5 +175,23 @@ void UMALComboComponent::ClearRecoveryTimer()
 
 void UMALComboComponent::HandleRecoveryExpired()
 {
+	// The montage is the only state both copies of this component agree on. When the chain
+	// advances on one side only (a replicated press that lands after this copy's window closed),
+	// the stale copy arms a release that nothing clears, and ending on it cuts the swing the
+	// other side is already playing. Re-sync instead: the section jump is already replicated,
+	// so the next press has to chain from the montage rather than from the dead counter.
+	const int32 MontageStep = MontageStepQuery.IsBound() ? MontageStepQuery.Execute() : 0;
+	if (MontageStep > CurrentStep)
+	{
+		UE_LOG(LogTemp, Log, TEXT("Combo: release at step %d dropped, montage already on step %d"),
+			CurrentStep, MontageStep);
+
+		CurrentStep = MontageStep;
+		bWindowOpen = false;
+		bInputBuffered = false;
+		BufferedAt = 0.0;
+		return;
+	}
+
 	OnRecoveryExpired.Broadcast();
 }
