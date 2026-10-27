@@ -74,16 +74,6 @@ public:
 	/** Set by the menu before the row is shown; null leaves the button an inert label. */
 	TFunction<void(EMALPrimaryStat)> AddPointRequested;
 
-	/**
-	 * Raised after every DisplayValue update, with the text that was written.
-	 *
-	 * The menu uses it to paint the row's text block directly. A row blueprint whose view model
-	 * source is one the widget creates for itself cannot have that source replaced at runtime,
-	 * so its view binding keeps reading the widget's own instance and never sees this one;
-	 * pushing the text out is what keeps the row live in that case.
-	 */
-	TFunction<void(const FText&)> ValueChanged;
-
 	/** Label shown at the left of the row. */
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "MAL|UI|Attribute")
 	FText AttributeName;

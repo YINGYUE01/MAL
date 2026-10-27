@@ -5,11 +5,13 @@
 #include "AbilitySystem/Attributes/MALProgressionAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Components/Button.h"
-#include "Components/PanelWidget.h"
+#include "Components/ScrollBox.h"
+#include "Components/ScrollBoxSlot.h"
 #include "Components/TextBlock.h"
 #include "Components/WidgetSwitcher.h"
 #include "Player/MALPlayerController.h"
 #include "UI/ViewModel/MALAttributeRowViewModel.h"
+#include "UI/Widgets/MALAttributeRowWidget.h"
 
 namespace
 {
@@ -73,22 +75,17 @@ void UMALAttributeMenuWidget::NativeConstruct()
 	Super::NativeConstruct();
 
 	// Construct runs again every time the widget is re-added to the viewport. The row set only
-	// depends on the two stat arrays, which do not change at runtime, so one build is enough; a
-	// build that found no container is retried on the next construct.
+	// depends on the two stat arrays and RowWidgetClass, which do not change at runtime, so one
+	// build is enough; a build that found the blueprint unconfigured is retried next time.
 	if (!bRowsBuilt)
 	{
 		bRowsBuilt = BuildRows();
 	}
 
-	ResolvePointsLeftText();
+	// Also re-run on every construct: the handlers are idempotent and the page index may have
+	// been changed from a blueprint before the widget came back on screen.
 	BindPageSwitcher();
 	ApplyStatsPage();
-
-	// Repainted on every add-to-viewport: re-adding rebuilds the child widgets, and a row whose
-	// view binding re-evaluates against the widget's own view model instance would come back
-	// blank. What the view models already hold is the current reading, so pushing it out again
-	// costs one text write per row and saves the row from showing nothing.
-	PublishRowValues();
 }
 
 void UMALAttributeMenuWidget::NativeAbilitySystemReady(UAbilitySystemComponent* InAbilitySystemComponent)
@@ -116,90 +113,7 @@ void UMALAttributeMenuWidget::NativeAbilitySystemReady(UAbilitySystemComponent* 
 		}
 	}
 
-	// SetAbilitySystemComponent primes each view model with the attribute's current value.
-	// Push that out now so a row whose bindings are still missing is not stuck at zero.
-	PublishRowValues();
-
 	BindPointAvailability(InAbilitySystemComponent);
-}
-
-UPanelWidget* UMALAttributeMenuWidget::FindRowContainer(FName ContainerName) const
-{
-	return Cast<UPanelWidget>(GetWidgetFromName(ContainerName));
-}
-
-UWidgetSwitcher* UMALAttributeMenuWidget::FindStatsSwitcher() const
-{
-	return Cast<UWidgetSwitcher>(GetWidgetFromName(StatsSwitcherName));
-}
-
-void UMALAttributeMenuWidget::ApplyStatsPage()
-{
-	if (UWidgetSwitcher* Switcher = FindStatsSwitcher())
-	{
-		Switcher->SetActiveWidgetIndex(bShowingSecondaryStats ? 1 : 0);
-	}
-
-	// Followed here rather than bound in the blueprint: the title has to change exactly when the
-	// switcher does, and both are named on this class already.
-	if (UTextBlock* Title = Cast<UTextBlock>(GetWidgetFromName(PageTitleTextName)))
-	{
-		Title->SetText(bShowingSecondaryStats ? SecondaryPageTitle : PrimaryPageTitle);
-	}
-}
-
-void UMALAttributeMenuWidget::BindPageSwitcher()
-{
-	// AddDynamic is unique underneath, so binding again on every construct is harmless.
-	if (UButton* PreviousButton = Cast<UButton>(GetWidgetFromName(PreviousPageButtonName)))
-	{
-		PreviousButton->OnClicked.AddDynamic(this, &UMALAttributeMenuWidget::ShowPrimaryStats);
-	}
-
-	if (UButton* NextButton = Cast<UButton>(GetWidgetFromName(NextPageButtonName)))
-	{
-		NextButton->OnClicked.AddDynamic(this, &UMALAttributeMenuWidget::ShowSecondaryStats);
-	}
-}
-
-bool UMALAttributeMenuWidget::BuildRows()
-{
-	UPanelWidget* PrimaryContainer = FindRowContainer(RowContainerName);
-	UPanelWidget* SecondaryContainer = FindRowContainer(SecondaryRowContainerName);
-
-	if (!PrimaryContainer && !SecondaryContainer)
-	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("UMALAttributeMenuWidget: %s has neither '%s' nor '%s'. The menu stays unconfigured."),
-			*GetNameSafe(this), *RowContainerName.ToString(), *SecondaryRowContainerName.ToString());
-		return false;
-	}
-
-	// Counted instead of logged per row: a row blueprint without a source of this type is a
-	// blueprint to finish, not nineteen separate problems.
-	int32 RejectedRows = 0;
-	if (PrimaryContainer)
-	{
-		RejectedRows += BuildPrimaryRows(PrimaryContainer);
-	}
-	if (SecondaryContainer)
-	{
-		RejectedRows += BuildSecondaryRows(SecondaryContainer);
-	}
-
-	if (RejectedRows > 0)
-	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("UMALAttributeMenuWidget: %d rows did not accept a row view model. Declare a settable %s source in the row blueprint to get live values there."),
-			RejectedRows, *UMALAttributeRowViewModel::StaticClass()->GetName());
-	}
-
-	return true;
-}
-
-void UMALAttributeMenuWidget::ResolvePointsLeftText()
-{
-	PointsLeftText = Cast<UTextBlock>(GetWidgetFromName(PointsLeftTextName));
 }
 
 void UMALAttributeMenuWidget::RefreshPointsLeft(float Points)
@@ -211,174 +125,185 @@ void UMALAttributeMenuWidget::RefreshPointsLeft(float Points)
 	}
 }
 
-int32 UMALAttributeMenuWidget::BuildPrimaryRows(UPanelWidget* Container)
+void UMALAttributeMenuWidget::ApplyStatsPage()
 {
-	TArray<EMALPrimaryStat> Stats = RowStats;
-	if (Stats.Num() == 0)
+	if (StatsSwitcher)
 	{
-		AppendAllPrimaryRowStats(Stats);
+		StatsSwitcher->SetActiveWidgetIndex(bShowingSecondaryStats ? 1 : 0);
 	}
 
-	const int32 RowCount = Container->GetChildrenCount();
-	PrimaryRowViewModels.Reset();
-	PrimaryRowViewModels.SetNum(RowCount);
+	// Followed here rather than bound in the blueprint: the title has to change exactly when the
+	// switcher does, and the page index lives on this class.
+	if (PageTitleText)
+	{
+		PageTitleText->SetText(bShowingSecondaryStats ? SecondaryPageTitle : PrimaryPageTitle);
+	}
+}
 
+void UMALAttributeMenuWidget::BindPageSwitcher()
+{
+	// AddUnique semantics are the point: Construct runs on every add-to-viewport, and a plain
+	// AddDynamic would stack one more handler per visit.
+	if (PreviousPageButton)
+	{
+		PreviousPageButton->OnClicked.AddUniqueDynamic(this, &UMALAttributeMenuWidget::ShowPrimaryStats);
+	}
+
+	if (NextPageButton)
+	{
+		NextPageButton->OnClicked.AddUniqueDynamic(this, &UMALAttributeMenuWidget::ShowSecondaryStats);
+	}
+}
+
+bool UMALAttributeMenuWidget::BuildRows()
+{
+	if (!PrimaryRowsBox && !SecondaryRowsBox)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("UMALAttributeMenuWidget: %s binds neither PrimaryRowsBox nor SecondaryRowsBox. The menu stays unconfigured."),
+			*GetNameSafe(this));
+		return false;
+	}
+
+	if (!RowWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("UMALAttributeMenuWidget: %s has no RowWidgetClass. Assign the row widget blueprint to build either page."),
+			*GetNameSafe(this));
+		return false;
+	}
+
+	// Counted instead of logged per row: a row blueprint without a source of this type is a
+	// blueprint to finish, not nineteen separate problems.
 	int32 RejectedRows = 0;
-	for (int32 Index = 0; Index < RowCount; ++Index)
+
+	TArray<EMALPrimaryStat> PrimaryStats = RowStats;
+	if (PrimaryStats.Num() == 0)
 	{
-		UMALUserWidget* Row = Cast<UMALUserWidget>(Container->GetChildAt(Index));
-		if (!Row)
+		AppendAllPrimaryRowStats(PrimaryStats);
+	}
+
+	RejectedRows += BuildPage(PrimaryRowsBox, PrimaryStats.Num(),
+		[this, &PrimaryStats](int32 Index)
 		{
-			continue;
-		}
+			UMALAttributeRowViewModel* RowViewModel = NewObject<UMALAttributeRowViewModel>(this);
+			RowViewModel->InitializePrimary(PrimaryStats[Index]);
 
-		// Keeping the extras out of the way rather than leaving a row on screen that follows no
-		// stat: a panel is usually trimmed down before its stat list is filled out.
-		if (!Stats.IsValidIndex(Index))
-		{
-			Row->SetVisibility(ESlateVisibility::Collapsed);
-			continue;
-		}
-
-		Row->SetVisibility(ESlateVisibility::Visible);
-
-		UMALAttributeRowViewModel* RowViewModel = NewObject<UMALAttributeRowViewModel>(this);
-		RowViewModel->InitializePrimary(Stats[Index]);
-		PrimaryRowViewModels[Index] = RowViewModel;
-
-		if (!InitializeRow(Row, RowViewModel))
-		{
-			++RejectedRows;
-		}
-
-		// Routed through the menu because this is the only object here with an owning player: a
-		// client never sees its own controller through the PlayerState, whose owner does not
-		// replicate, so a lookup from the view model would come back empty there.
-		TWeakObjectPtr<UMALAttributeMenuWidget> WeakThis(this);
-		RowViewModel->AddPointRequested = [WeakThis](EMALPrimaryStat Stat)
-		{
-			UMALAttributeMenuWidget* Menu = WeakThis.Get();
-			if (!Menu)
+			// Routed through the menu because this is the only object here with an owning
+			// player: a client never sees its own controller through the PlayerState, whose
+			// owner does not replicate, so a lookup from the view model would come back empty
+			// there.
+			TWeakObjectPtr<UMALAttributeMenuWidget> WeakThis(this);
+			RowViewModel->AddPointRequested = [WeakThis](EMALPrimaryStat Stat)
 			{
-				return;
-			}
+				UMALAttributeMenuWidget* Menu = WeakThis.Get();
+				if (!Menu)
+				{
+					return;
+				}
 
-			if (AMALPlayerController* PlayerController = Cast<AMALPlayerController>(Menu->GetOwningPlayer()))
-			{
-				PlayerController->ServerSpendAttributePoint(Stat, 1);
-			}
-		};
+				if (AMALPlayerController* PlayerController = Cast<AMALPlayerController>(Menu->GetOwningPlayer()))
+				{
+					PlayerController->ServerSpendAttributePoint(Stat, 1);
+				}
+			};
 
-		// Bound here rather than in the row blueprint: every row is one widget blueprint, so a
-		// click wired in the graph would have no way to say which stat it belongs to. The per
-		// row view model already carries that, and its handler is the UFUNCTION a dynamic
-		// button delegate needs.
-		if (UButton* AddPointButton = Cast<UButton>(Row->GetWidgetFromName(RowAddPointButtonName)))
-		{
-			AddPointButton->OnClicked.AddDynamic(RowViewModel, &UMALAttributeRowViewModel::RequestAddPoint);
-			RowAddPointButtons.Add(AddPointButton);
-		}
+			return RowViewModel;
+		},
+		PrimaryRowViewModels,
+		/*bSpendable*/ true);
+
+	TArray<EMALSecondaryStat> SecondaryStats = SecondaryRowStats;
+	if (SecondaryStats.Num() == 0)
+	{
+		AppendAllSecondaryRowStats(SecondaryStats);
 	}
 
-	return RejectedRows;
-}
+	RejectedRows += BuildPage(SecondaryRowsBox, SecondaryStats.Num(),
+		[this, &SecondaryStats](int32 Index)
+		{
+			UMALAttributeRowViewModel* RowViewModel = NewObject<UMALAttributeRowViewModel>(this);
+			// A derived row ends here: no spend callback to give it, and the row collapses its
+			// add button because the view model reports that it cannot spend.
+			RowViewModel->InitializeSecondary(SecondaryStats[Index]);
+			return RowViewModel;
+		},
+		SecondaryRowViewModels,
+		/*bSpendable*/ false);
 
-int32 UMALAttributeMenuWidget::BuildSecondaryRows(UPanelWidget* Container)
-{
-	TArray<EMALSecondaryStat> Stats = SecondaryRowStats;
-	if (Stats.Num() == 0)
+	if (RejectedRows > 0)
 	{
-		AppendAllSecondaryRowStats(Stats);
+		UE_LOG(LogTemp, Warning,
+			TEXT("UMALAttributeMenuWidget: %d rows did not accept a row view model. Declare a settable %s source in %s to get live values there."),
+			RejectedRows, *UMALAttributeRowViewModel::StaticClass()->GetName(), *GetNameSafe(RowWidgetClass));
 	}
 
-	const int32 RowCount = Container->GetChildrenCount();
-	SecondaryRowViewModels.Reset();
-	SecondaryRowViewModels.SetNum(RowCount);
+	return true;
+}
 
-	int32 RejectedRows = 0;
-	for (int32 Index = 0; Index < RowCount; ++Index)
+int32 UMALAttributeMenuWidget::BuildPage(UScrollBox* Container,
+	int32 StatCount,
+	TFunctionRef<UMALAttributeRowViewModel*(int32 Index)> MakeRowViewModel,
+	TArray<TObjectPtr<UMALAttributeRowViewModel>>& OutViewModels,
+	bool bSpendable)
+{
+	OutViewModels.Reset();
+	if (bSpendable)
 	{
-		UMALUserWidget* Row = Cast<UMALUserWidget>(Container->GetChildAt(Index));
-		if (!Row)
-		{
-			continue;
-		}
-
-		if (!Stats.IsValidIndex(Index))
-		{
-			Row->SetVisibility(ESlateVisibility::Collapsed);
-			continue;
-		}
-
-		Row->SetVisibility(ESlateVisibility::Visible);
-
-		UMALAttributeRowViewModel* RowViewModel = NewObject<UMALAttributeRowViewModel>(this);
-		RowViewModel->InitializeSecondary(Stats[Index]);
-		SecondaryRowViewModels[Index] = RowViewModel;
-
-		// A derived row ends here: no button to wire, and no spend callback to give it.
-		if (!InitializeRow(Row, RowViewModel))
-		{
-			++RejectedRows;
-		}
+		SpendableRows.Reset();
 	}
 
-	return RejectedRows;
-}
-
-bool UMALAttributeMenuWidget::InitializeRow(UMALUserWidget* Row, UMALAttributeRowViewModel* RowViewModel)
-{
-	// Not fatal when the row blueprint declares no source of this type yet: the setters below
-	// still paint the label and value, only the blueprint binding stays dead.
-	const bool bAccepted = Row->SetViewModelByClass(RowViewModel);
-
-	Row->SetDisplayName(RowViewModel->AttributeName);
-	Row->SetDisplayValue(RowViewModel->DisplayValue);
-
-	// The row blueprint declares its view model source as one the widget creates for itself,
-	// and a source like that cannot be replaced at runtime, so the binding on the row keeps
-	// reading the widget's own instance instead of this one. Painting the text block from
-	// here is what keeps the row live; the binding stays for a blueprint that switches its
-	// source to a manual one.
-	TWeakObjectPtr<UMALUserWidget> WeakRow(Row);
-	RowViewModel->ValueChanged = [WeakRow](const FText& Value)
-	{
-		if (UMALUserWidget* RowWidget = WeakRow.Get())
-		{
-			RowWidget->SetDisplayValue(Value);
-		}
-	};
-
-	return bAccepted;
-}
-
-void UMALAttributeMenuWidget::PublishRowValues()
-{
-	PublishRowsInContainer(FindRowContainer(RowContainerName), PrimaryRowViewModels);
-	PublishRowsInContainer(FindRowContainer(SecondaryRowContainerName), SecondaryRowViewModels);
-}
-
-void UMALAttributeMenuWidget::PublishRowsInContainer(UPanelWidget* Container,
-	const TArray<TObjectPtr<UMALAttributeRowViewModel>>& RowViewModels)
-{
 	if (!Container)
 	{
-		return;
+		return 0;
 	}
 
-	const int32 RowCount = FMath::Min(Container->GetChildrenCount(), RowViewModels.Num());
-	for (int32 Index = 0; Index < RowCount; ++Index)
+	// Rows are owned by the panel, not by the blueprint: whatever a page was authored with is
+	// replaced by the stat list this class was configured with, so the two can never disagree
+	// on how many rows there are.
+	Container->ClearChildren();
+
+	int32 RejectedRows = 0;
+	for (int32 Index = 0; Index < StatCount; ++Index)
 	{
-		UMALUserWidget* Row = Cast<UMALUserWidget>(Container->GetChildAt(Index));
-		const UMALAttributeRowViewModel* RowViewModel = RowViewModels[Index];
-		if (!Row || !RowViewModel)
+		UMALAttributeRowViewModel* RowViewModel = MakeRowViewModel(Index);
+		if (!RowViewModel)
 		{
 			continue;
 		}
 
-		Row->SetDisplayName(RowViewModel->AttributeName);
-		Row->SetDisplayValue(RowViewModel->DisplayValue);
+		UMALAttributeRowWidget* Row = CreateWidget<UMALAttributeRowWidget>(this, RowWidgetClass);
+		if (!Row)
+		{
+			// BuildRows checks RowWidgetClass before this point; a failure here is a class that
+			// is not a widget and would fail for every index, so there is nothing to retry.
+			break;
+		}
+
+		Container->AddChild(Row);
+
+		// The slot only exists once the child is in the panel. Fill horizontally so a row
+		// stretches with the panel instead of sitting at its authored width.
+		if (UScrollBoxSlot* RowSlot = Cast<UScrollBoxSlot>(Row->Slot))
+		{
+			RowSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, RowSpacing));
+			RowSlot->SetHorizontalAlignment(HAlign_Fill);
+		}
+
+		if (!Row->SetRowViewModel(RowViewModel))
+		{
+			++RejectedRows;
+		}
+
+		OutViewModels.Add(RowViewModel);
+
+		if (bSpendable)
+		{
+			SpendableRows.Add(Row);
+		}
 	}
+
+	return RejectedRows;
 }
 
 void UMALAttributeMenuWidget::BindPointAvailability(UAbilitySystemComponent* InAbilitySystemComponent)
@@ -410,11 +335,11 @@ void UMALAttributeMenuWidget::HandleAttributePointsChanged(const FOnAttributeCha
 
 void UMALAttributeMenuWidget::SetAddPointEnabled(bool bEnabled)
 {
-	for (UButton* AddPointButton : RowAddPointButtons)
+	for (UMALAttributeRowWidget* Row : SpendableRows)
 	{
-		if (AddPointButton)
+		if (Row)
 		{
-			AddPointButton->SetIsEnabled(bEnabled);
+			Row->SetAddPointEnabled(bEnabled);
 		}
 	}
 }

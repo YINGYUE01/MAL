@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AbilitySystem/Attributes/MALPrimaryStat.h"
 #include "Components/ActorComponent.h"
+#include "GameplayTagContainer.h"
 #include "MALProgressionComponent.generated.h"
 
 class UMALClassDefinition;
@@ -105,6 +106,25 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/**
+	 * Cue played on the machine that owns this player when a level is gained.
+	 *
+	 * Defaults to GameplayCue.Character.LevelUp. Point it at another tag to swap the feedback,
+	 * or clear it to silence level-ups without touching code.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Progression|Cue")
+	FGameplayTag LevelUpCueTag;
+
+	/**
+	 * Plays LevelUpCueTag on this machine.
+	 *
+	 * A multi-cast rather than a plain call because ExecuteGameplayCue runs only where it is
+	 * invoked: the authority awards the experience and every client draws the feedback. One
+	 * award can cross several levels, so the cue fires once, for the level the player ends on.
+	 */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayLevelUpCue(int32 NewLevel);
 
 private:
 	/** Narrow the world-wide kill bus down to this player's own kills. */

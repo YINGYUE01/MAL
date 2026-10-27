@@ -203,6 +203,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|GameplayCue")
 	FGameplayTag GameplayCue_Hit_Impact;
 
+	/** Level-up feedback, played on every machine that sees the player level */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|GameplayCue")
+	FGameplayTag GameplayCue_Character_LevelUp;
+
 	// -----------------------------------------------------------------------------
 	// Attribute Tags - Primary (base stats that drive secondary calculations)
 	// -----------------------------------------------------------------------------

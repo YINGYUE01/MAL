@@ -37,6 +37,15 @@ public:
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
 
+	/**
+	 * Cancels the cast timeout on the normal path.
+	 *
+	 * Status.Casting is held for as long as this ability runs, and AMALPlayerController reads it
+	 * to lock Move/Jump -- so an ability that never ends locks the player out of moving, with no
+	 * way back short of restarting the session.
+	 */
+	virtual void OnAbilityMontageEnded(bool bInterrupted) override;
+
 protected:
 	/** Buff effect applied to the caster. Falls back to UMALBuffGameplayEffect. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Buff")
@@ -61,4 +70,11 @@ protected:
 	TObjectPtr<UAnimMontage> ActivationMontage;
 
 	virtual void PostLoad() override;
+
+private:
+	/** Ends the cast when the montage never reports back, releasing Status.Casting. */
+	void HandleCastTimeout();
+
+	/** Set when the montage starts playing; cleared when it ends normally. */
+	FTimerHandle CastTimeoutHandle;
 };

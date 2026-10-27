@@ -14,7 +14,9 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
+#include "GameplayEffectTypes.h"
 #include "Player/MALPlayerState.h"
+#include "Tags/MALGameplayTags.h"
 
 namespace
 {
@@ -45,12 +47,15 @@ UMALProgressionComponent::UMALProgressionComponent()
 	// Everything here is event-driven off a world-wide bus; there is nothing to advance per frame.
 	PrimaryComponentTick.bCanEverTick = false;
 
-	// Server-only bookkeeping: the attributes it writes replicate on their own, and no remote
-	// machine has a use for the component's own state.
-	SetIsReplicatedByDefault(false);
+	// Replicated so MulticastPlayLevelUpCue can reach clients. The component carries no
+	// replicated state of its own -- AllocatedPoints is deliberately not a UPROPERTY -- so the
+	// cost is the subobject registration and the occasional RPC.
+	SetIsReplicatedByDefault(true);
 
 	// Sized up front so a spend never has to grow the array, and so the index is the stat.
 	AllocatedPoints.SetNum(static_cast<int32>(EMALPrimaryStat::Count));
+
+	LevelUpCueTag = UMALGameplayTags::Get()->GameplayCue_Character_LevelUp;
 }
 
 void UMALProgressionComponent::BeginPlay()
@@ -151,6 +156,10 @@ void UMALProgressionComponent::AddExperience(int32 Amount)
 		const int32 PointsPerLevel = ClassDefinition ? FMath::Max(ClassDefinition->AttributePointsPerLevel, 0) : 0;
 		GrantAttributePoints(GainedLevels * PointsPerLevel);
 
+		// Sent before the authority-only broadcast, so every machine learns about the level at the
+		// same moment the server's own listeners do.
+		MulticastPlayLevelUpCue(Level);
+
 		OnLevelChanged.Broadcast(Level);
 	}
 
@@ -192,6 +201,38 @@ void UMALProgressionComponent::HandleDamageResolved(const FMALDamageResolvedEven
 		// outrank the reward authored on the victim's class default.
 		AddExperience(VictimCharacter->GetExperienceReward());
 	}
+}
+
+void UMALProgressionComponent::MulticastPlayLevelUpCue_Implementation(int32 NewLevel)
+{
+	if (!LevelUpCueTag.IsValid())
+	{
+		return;
+	}
+
+	AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
+	UAbilitySystemComponent* AbilitySystemComponent = OwningPlayerState ? OwningPlayerState->GetAbilitySystemComponent() : nullptr;
+	if (!AbilitySystemComponent)
+	{
+		return;
+	}
+
+	// The pawn rather than the player state: a burst cue needs something with a mesh to spawn on,
+	// and the player state has none. It is null while the player is dead, and the cue notify has
+	// to cope with that on its own.
+	AActor* Avatar = OwningPlayerState->GetPawn();
+
+	FGameplayCueParameters CueParameters;
+	CueParameters.Instigator = Avatar;
+	CueParameters.EffectCauser = Avatar;
+	CueParameters.SourceObject = this;
+
+	// The new level rides on the magnitude so a cue can scale itself -- a louder burst every ten
+	// levels -- without a second tag and a lookup on the notify side.
+	CueParameters.RawMagnitude = static_cast<float>(NewLevel);
+
+	// A no-op on a dedicated server, which is the intent: only machines with a viewport draw it.
+	AbilitySystemComponent->ExecuteGameplayCue(LevelUpCueTag, CueParameters);
 }
 
 void UMALProgressionComponent::GrantAttributePoints(int32 Count)

@@ -72,6 +72,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	// Gameplay Cue Tags
 	GameplayCue_Buff_DamageUp = TagManager.AddNativeGameplayTag(FName(TEXT("GameplayCue.Buff.DamageUp")), TEXT("Looping aura shown while the damage buff is active"));
 	GameplayCue_Hit_Impact = TagManager.AddNativeGameplayTag(FName(TEXT("GameplayCue.Hit.Impact")), TEXT("Impact feedback fired where a melee hit lands"));
+	GameplayCue_Character_LevelUp = TagManager.AddNativeGameplayTag(FName(TEXT("GameplayCue.Character.LevelUp")), TEXT("Level-up feedback, played on every machine that sees the player level"));
 
 	// Primary Attribute Tags
 	Attribute_Primary_Vigor = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Attribute.Primary.Vigor")), TEXT("Vigor - affects health and regen"));

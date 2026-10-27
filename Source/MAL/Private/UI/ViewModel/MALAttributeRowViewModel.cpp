@@ -39,14 +39,9 @@ void UMALAttributeRowViewModel::InitializeAttribute(const FGameplayAttribute& In
 
 void UMALAttributeRowViewModel::ApplyValue(float Value)
 {
-	const FText Formatted = MALFormatStatValue(Value, Format);
-	UE_MVVM_SET_PROPERTY_VALUE(DisplayValue, Formatted);
-
-	// Raised as well as set: see ValueChanged for why the binding alone is not enough.
-	if (ValueChanged)
-	{
-		ValueChanged(Formatted);
-	}
+	// Set through the macro so the row's view binding re-evaluates; this is the only path
+	// from a changed attribute to the text a row prints.
+	UE_MVVM_SET_PROPERTY_VALUE(DisplayValue, MALFormatStatValue(Value, Format));
 }
 
 void UMALAttributeRowViewModel::RequestAddPoint()

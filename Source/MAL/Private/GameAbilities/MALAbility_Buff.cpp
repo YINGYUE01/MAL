@@ -4,10 +4,12 @@
 
 #include "AbilitySystemComponent.h"
 #include "Animation/AnimMontage.h"
+#include "Engine/World.h"
 #include "GameAbilities/MALBuffGameplayEffect.h"
 #include "GameAbilities/MALManaCostGameplayEffect.h"
 #include "GameplayEffect.h"
 #include "Tags/MALGameplayTags.h"
+#include "TimerManager.h"
 
 UMALAbility_Buff::UMALAbility_Buff()
 {
@@ -58,7 +60,38 @@ void UMALAbility_Buff::ActivateAbility(
 	if (!PlayAbilityMontage())
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
 	}
+
+	// A montage that never reports back would hold Status.Casting -- and with it the movement
+	// lock -- for the rest of the session. The timeout ends the cast one beat after the
+	// animation should have finished; on the normal path OnAbilityMontageEnded clears it first.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(CastTimeoutHandle, this,
+			&UMALAbility_Buff::HandleCastTimeout, AbilityMontage->GetPlayLength() + 0.5f, false);
+	}
+}
+
+void UMALAbility_Buff::OnAbilityMontageEnded(bool bInterrupted)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(CastTimeoutHandle);
+	}
+
+	Super::OnAbilityMontageEnded(bInterrupted);
+}
+
+void UMALAbility_Buff::HandleCastTimeout()
+{
+	// Reaching here means the montage never reported finishing, which is a bug in the asset or
+	// in the animation setup rather than an expected path -- hence the warning.
+	UE_LOG(LogTemp, Warning,
+		TEXT("UMALAbility_Buff: %s never reported its montage ending. Ending the cast so %s is released."),
+		*GetName(), TEXT("MAL.Status.Casting"));
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, true);
 }
 
 void UMALAbility_Buff::PostLoad()

@@ -6,6 +6,8 @@
 #include "UI/Widgets/MALUserWidget.h"
 #include "MALMenuWidget.generated.h"
 
+class UWidgetAnimation;
+
 /**
  * UMALMenuWidget
  *
@@ -43,10 +45,59 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|UI")
 	float ScreenEdgeMargin = 48.f;
 
+	/**
+	 * UMG animation played when the menu opens. Assign one from the widget blueprint's class
+	 * defaults; left unset, the built-in fade and slide runs instead.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|UI|Transition")
+	TObjectPtr<UWidgetAnimation> OpenAnimation;
+
+	/**
+	 * UMG animation played when the menu closes. Same fallback as OpenAnimation, and the menu
+	 * is only removed from the viewport once it ends either way.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|UI|Transition")
+	TObjectPtr<UWidgetAnimation> CloseAnimation;
+
+	/** Seconds the built-in transition takes. Ignored once the animations above are assigned. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|UI|Transition")
+	float TransitionTime = 0.18f;
+
+	/** Slate units the panel travels during the built-in transition. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|UI|Transition")
+	float TransitionSlideDistance = 48.f;
+
 protected:
+	//~ Begin UUserWidget
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	//~ End UUserWidget
+
 	UFUNCTION(BlueprintImplementableEvent, Category = "MAL|UI", meta = (DisplayName = "On Menu Activated"))
 	void OnMenuActivated();
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "MAL|UI", meta = (DisplayName = "On Menu Deactivated"))
 	void OnMenuDeactivated();
+
+private:
+	/** Drives RenderOpacity and RenderTranslation from TransitionAlpha. */
+	void ApplyTransition();
+
+	/** Removes the menu once the close animation has played out. */
+	UFUNCTION()
+	void HandleCloseAnimationFinished();
+
+	/** 1 is fully on screen, 0 fully gone. Read only by the built-in transition. */
+	float TransitionAlpha = 1.f;
+
+	/** Where TransitionAlpha is heading. */
+	float TargetAlpha = 1.f;
+
+	/** Set while an exit is playing, so the menu outlives it rather than vanishing mid-way. */
+	bool bClosing = false;
+
+	/** Held as a member so the finish callback is bound once per widget, not once per close. */
+	FWidgetAnimationDynamicEvent CloseFinishedEvent;
+
+	/** True once CloseFinishedEvent is bound to CloseAnimation. */
+	bool bCloseFinishedBound = false;
 };

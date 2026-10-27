@@ -10,7 +10,8 @@
 
 class UButton;
 class UMALAttributeRowViewModel;
-class UPanelWidget;
+class UMALAttributeRowWidget;
+class UScrollBox;
 class UTextBlock;
 class UWidgetSwitcher;
 struct FOnAttributeChangeData;
@@ -22,18 +23,20 @@ struct FOnAttributeChangeData;
  * page, the derived ones from SecondaryRowStats on the second. Only one page is on screen at a
  * time; ShowPrimaryStats and ShowSecondaryStats, or the arrow buttons, flip between them.
  *
- * The page a row belongs to is decided by the container it sits in: RowContainerName for the
- * spendable page, SecondaryRowContainerName for the derived one. Within the spendable page the
- * row blueprint is expected to carry an add button; that button is what gets wired for spending,
- * and the derived row blueprint is the same layout without it, so the panel never has to know
- * either class name.
+ * Rows are created at runtime from RowWidgetClass, one per stat, so the page a row belongs to
+ * is decided by which container it was built into rather than by how many copies a blueprint
+ * happens to contain. Adding a stat is a change to the arrays below; the blueprint stays the
+ * same. The row blueprint carries an add button on the spendable page and collapses it on the
+ * derived one, which is why a single row class draws both pages.
  *
  * Owns one row view model per row. The rows all share a single widget blueprint within each
  * page, so a shared source would print the same stat in every one of them; giving each row its
- * own instance is what lets one blueprint draw five different primaries and another draw the
- * fourteen derived stats.
+ * own instance is what lets one blueprint draw five different primaries and fourteen derived
+ * stats.
  *
- * Both pages are found through StatsSwitcherName, then through the two container names inside it.
+ * The parts are bound as optional widgets rather than looked up by name: a renamed widget is a
+ * compile error in the blueprint instead of a silent no-op at runtime, and a panel that leaves
+ * one out still runs.
  *
  * A menu rather than a plain widget: the UI subsystem owns the stack, so this panel is opened
  * and closed through PushMenu and PopMenu and never needs to know how it got on screen. It must
@@ -74,10 +77,6 @@ protected:
 	/**
 	 * Spendable stats drawn top to bottom. Leave empty to get the five primaries, which is what
 	 * an unconfigured blueprint wants.
-	 *
-	 * A list shorter than the blueprint's spendable row count is normal while a panel is being
-	 * trimmed: the extra rows are collapsed instead of left printing a label with no stat
-	 * behind it.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
 	TArray<EMALPrimaryStat> RowStats;
@@ -92,36 +91,19 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
 	TArray<EMALSecondaryStat> SecondaryRowStats;
 
-	/** Scroll box holding the spendable page's rows, the first page of StatsSwitcherName. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
-	FName RowContainerName = TEXT("ScrollBox_0");
-
-	/** Scroll box holding the derived page's rows, the second page of StatsSwitcherName. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
-	FName SecondaryRowContainerName = TEXT("ScrollBox_Secondary");
-
 	/**
-	 * Switcher whose two pages are the containers above. Left None, both pages are still built
-	 * and only the first is ever put on screen.
+	 * Row widget created once per stat.
+	 *
+	 * A single class draws both pages: its add button is shown only on rows that can spend, so
+	 * the derived page needs no second blueprint. Null leaves both pages empty and logs which
+	 * property to fill in.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
-	FName StatsSwitcherName = TEXT("WidgetSwitcher_0");
+	TSubclassOf<UMALAttributeRowWidget> RowWidgetClass;
 
-	/** Button that jumps to the spendable page. A missing one is left unwired. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
-	FName PreviousPageButtonName = TEXT("Button_PrevTab");
-
-	/** Button that jumps to the derived page. A missing one is left unwired. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
-	FName NextPageButtonName = TEXT("Button_NextTab");
-
-	/** Title block rewritten on every page change. Left None, the title never changes. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
-	FName PageTitleTextName = TEXT("TextBlock_73");
-
-	/** Text block showing the points still available to spend. Left None, the readout stays blank. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
-	FName PointsLeftTextName = TEXT("TextBlock_PointsLeft");
+	/** Gap under every row, in slate units. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute", meta = (ClampMin = "0.0"))
+	float RowSpacing = 6.0f;
 
 	/** Title shown on the spendable page. */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
@@ -131,15 +113,33 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
 	FText SecondaryPageTitle;
 
-	/**
-	 * Button inside a row that puts one point into that row's stat.
-	 * Rename here if the row blueprint's add button is not Button_56.
-	 *
-	 * Only the spendable page wires this: a row on the derived page carrying a button is left
-	 * inert, because there is no stat behind it to put a point into.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Attribute")
-	FName RowAddPointButtonName = TEXT("Button_56");
+	/** Scroll box holding the spendable page's rows, the first page of the switcher. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UScrollBox> PrimaryRowsBox;
+
+	/** Scroll box holding the derived page's rows, the second page of the switcher. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UScrollBox> SecondaryRowsBox;
+
+	/** Switcher whose two pages are the containers above. A missing one leaves page one up. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UWidgetSwitcher> StatsSwitcher;
+
+	/** Button that jumps to the spendable page. A missing one is left unwired. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> PreviousPageButton;
+
+	/** Button that jumps to the derived page. A missing one is left unwired. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> NextPageButton;
+
+	/** Title block rewritten on every page change. A missing one only costs the title. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> PageTitleText;
+
+	/** Text block showing the points still available to spend. A missing one only costs the number. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> PointsLeftText;
 
 	//~ Begin UMALUserWidget
 	virtual void NativeConstruct() override;
@@ -149,28 +149,25 @@ protected:
 	UMALAttributeMenuWidget();
 
 private:
-	/** Find the points readout once the rows exist; a missing one only costs the number. */
-	void ResolvePointsLeftText();
-
 	/** Write the bank into the panel. Called on every change, not just on open. */
 	void RefreshPointsLeft(float Points);
 
-	/** Fill both pages. Returns false when neither container exists. */
+	/** Fill both pages. Returns false when the blueprint is not configured enough to try. */
 	bool BuildRows();
 
-	/** Fill the spendable page. Returns how many rows refused their view model. */
-	int32 BuildPrimaryRows(UPanelWidget* Container);
-
-	/** Fill the derived page. Returns how many rows refused their view model. */
-	int32 BuildSecondaryRows(UPanelWidget* Container);
-
 	/**
-	 * Hand one row its view model and paint it.
+	 * Fill one page: one row per stat, created from RowWidgetClass.
 	 *
-	 * Returns false when the row blueprint declares no source of this type: the label and value
-	 * are still painted, only the blueprint binding stays dead.
+	 * The view model factory is what differs between the pages, so it is the only thing passed
+	 * in; everything else here is the same for a spendable and a derived row.
+	 *
+	 * Returns how many rows refused their view model.
 	 */
-	bool InitializeRow(UMALUserWidget* Row, UMALAttributeRowViewModel* RowViewModel);
+	int32 BuildPage(UScrollBox* Container,
+		int32 StatCount,
+		TFunctionRef<UMALAttributeRowViewModel*(int32 Index)> MakeRowViewModel,
+		TArray<TObjectPtr<UMALAttributeRowViewModel>>& OutViewModels,
+		bool bSpendable);
 
 	/** Wire the two page buttons, if the blueprint has them. */
 	void BindPageSwitcher();
@@ -178,24 +175,7 @@ private:
 	/** Point the switcher and the title at the current page. */
 	void ApplyStatsPage();
 
-	/**
-	 * Write every row's current label and value straight into the widget.
-	 *
-	 * The rows are also meant to be bound in the blueprint, but a blueprint that has not
-	 * declared a row source yet would otherwise stay at its design-time text, and the label is
-	 * known here even before an ability system exists.
-	 */
-	void PublishRowValues();
-
-	void PublishRowsInContainer(UPanelWidget* Container,
-		const TArray<TObjectPtr<UMALAttributeRowViewModel>>& RowViewModels);
-
-	/**
-	 * Grey out the add buttons while the bank is empty.
-	 *
-	 * The spend itself already refuses a point that is not there; this is so the panel says so
-	 * before it is clicked rather than after.
-	 */
+	/** Listen for the bank and grey the add buttons while it is empty. */
 	void BindPointAvailability(UAbilitySystemComponent* InAbilitySystemComponent);
 
 	/** Native delegate handler, not a UFUNCTION: nothing here is driven by reflection. */
@@ -203,24 +183,17 @@ private:
 
 	void SetAddPointEnabled(bool bEnabled);
 
-	UPanelWidget* FindRowContainer(FName ContainerName) const;
-	UWidgetSwitcher* FindStatsSwitcher() const;
-
-	/** One view model per child of the spendable page's container. */
+	/** One view model per row of the spendable page, in draw order. */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMALAttributeRowViewModel>> PrimaryRowViewModels;
 
-	/** One view model per child of the derived page's container. */
+	/** One view model per row of the derived page, in draw order. */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMALAttributeRowViewModel>> SecondaryRowViewModels;
 
-	/** Add buttons, one per spendable row, in the order those rows appear. */
+	/** Rows of the spendable page, so the bank can disable their buttons. */
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UButton>> RowAddPointButtons;
-
-	/** Block that prints the points left; resolved from PointsLeftTextName. */
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> PointsLeftText;
+	TArray<TObjectPtr<UMALAttributeRowWidget>> SpendableRows;
 
 	/** Set once the rows exist. Construct runs again on every add-to-viewport. */
 	bool bRowsBuilt = false;

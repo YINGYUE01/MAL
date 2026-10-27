@@ -55,7 +55,6 @@ void UMALCooldownGameplayEffect::SyncGrantedTags()
 
 	// The component stages the tags; this rebuilds the effect's cached containers so a freshly
 	// loaded asset reports them before anything queries it.
-	//
 	// Skipped while the object is still loading. PostCDOCompiled also runs as part of loading a
 	// blueprint (Preload, Serialize, Init, CDO Compile, PostLoad), so the CDO carries
 	// RF_NeedPostLoad at that point and OnGameplayEffectChanged treats it as an error -- it asserts
