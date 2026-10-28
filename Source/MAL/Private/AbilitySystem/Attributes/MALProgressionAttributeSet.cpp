@@ -12,6 +12,7 @@ UMALProgressionAttributeSet::UMALProgressionAttributeSet()
 	InitExperience(0.0f);
 	InitExperienceToNextLevel(1.0f);
 	InitAttributePoints(0.0f);
+	InitSkillPoints(0.0f);
 }
 
 void UMALProgressionAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -24,6 +25,7 @@ void UMALProgressionAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimePro
 	DOREPLIFETIME_CONDITION_NOTIFY(UMALProgressionAttributeSet, Experience, COND_None, REPNOTIFY_OnChanged);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMALProgressionAttributeSet, ExperienceToNextLevel, COND_None, REPNOTIFY_OnChanged);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMALProgressionAttributeSet, AttributePoints, COND_None, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMALProgressionAttributeSet, SkillPoints, COND_None, REPNOTIFY_OnChanged);
 }
 
 void UMALProgressionAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
@@ -49,6 +51,10 @@ void UMALProgressionAttributeSet::PreAttributeChange(const FGameplayAttribute& A
 	{
 		NewValue = FMath::Max(NewValue, 0.0f);
 	}
+	else if (Attribute == GetSkillPointsAttribute())
+	{
+		NewValue = FMath::Max(NewValue, 0.0f);
+	}
 }
 
 void UMALProgressionAttributeSet::OnRep_Level(const FGameplayAttributeData& OldLevel)
@@ -69,4 +75,9 @@ void UMALProgressionAttributeSet::OnRep_ExperienceToNextLevel(const FGameplayAtt
 void UMALProgressionAttributeSet::OnRep_AttributePoints(const FGameplayAttributeData& OldAttributePoints)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALProgressionAttributeSet, AttributePoints, OldAttributePoints);
+}
+
+void UMALProgressionAttributeSet::OnRep_SkillPoints(const FGameplayAttributeData& OldSkillPoints)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMALProgressionAttributeSet, SkillPoints, OldSkillPoints);
 }

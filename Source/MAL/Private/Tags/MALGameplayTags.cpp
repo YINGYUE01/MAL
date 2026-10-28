@@ -67,6 +67,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	Input_Dash = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Dash")), TEXT("Dash input"));
 	Input_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Buff")), TEXT("Buff input"));
 	Input_AttributeMenu = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.AttributeMenu")), TEXT("Opens or closes the attribute menu; not an ability input"));
+	Input_SkillMenu = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.SkillMenu")), TEXT("Opens or closes the skill tree menu; not an ability input"));
 	Input_AbilityActivated = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.AbilityActivated")), TEXT("Ability activated - used by ASC for input forwarding routing"));
 
 	// Gameplay Cue Tags

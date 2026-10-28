@@ -81,6 +81,9 @@ protected:
 	//~ End UMALUIViewModelBase
 
 private:
+	/** Blank every field. Used when no ASC is bound, and when one is released. */
+	void ClearSlot();
+
 	/** Spec currently filling this slot; null while no ability is granted for InputTag. */
 	FGameplayAbilitySpec* FindAbilitySpec() const;
 };

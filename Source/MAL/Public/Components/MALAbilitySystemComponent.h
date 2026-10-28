@@ -9,6 +9,7 @@
 #include "MALAbilitySystemComponent.generated.h"
 
 class UMALAbilitySet;
+class UGameplayAbility;
 
 UCLASS()
 class MAL_API UMALAbilitySystemComponent : public UAbilitySystemComponent
@@ -32,6 +33,21 @@ public:
 	 * Server only.
 	 */
 	TArray<FGameplayAbilitySpecHandle> GrantAbilitySet(const UMALAbilitySet* AbilitySet);
+
+	/**
+	 * Grant one ability, tagging its spec with InputTag and remembering the handle.
+	 *
+	 * The single-skill path behind both GrantAbilitySet and the skill tree. Sharing it is what
+	 * keeps GrantedAbilityHandles complete: ClearGrantedAbilities only clears what was recorded
+	 * here, so a skill granted around this function would survive a re-grant and stack up.
+	 *
+	 * Server only; returns an invalid handle when the class is null or this is not the authority.
+	 * An invalid InputTag grants the ability with no input binding.
+	 */
+	FGameplayAbilitySpecHandle GrantAbility(
+		TSubclassOf<UGameplayAbility> AbilityClass,
+		FGameplayTag InputTag = FGameplayTag(),
+		int32 Level = 1);
 
 	/** Remove every ability granted through GrantAbilitySet. Server only. */
 	void ClearGrantedAbilities();

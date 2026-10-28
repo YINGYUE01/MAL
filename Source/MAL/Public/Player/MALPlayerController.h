@@ -62,6 +62,15 @@ public:
 	void ToggleAttributeMenu();
 
 	/**
+	 * Open the skill tree menu, or close it when it is the one on top.
+	 *
+	 * Same contract as ToggleAttributeMenu: this key only ever dismisses its own panel, so
+	 * pressing it while another menu is up opens this one on top of it instead.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MAL|UI")
+	void ToggleSkillMenu();
+
+	/**
 	 * Pop the topmost menu. Callable from menu buttons: a paused world stops ticking input, so the
 	 * close path has to come from the UI itself rather than a gameplay input action.
 	 */
@@ -91,6 +100,15 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "MAL|Progression")
 	void ServerSpendAttributePoint(EMALPrimaryStat Stat, int32 Count);
 
+	/**
+	 * Client -> server: buy one node of the skill tree.
+	 *
+	 * Reliable for the same reason the point spend is: a dropped click would leave the panel
+	 * showing a skill the server never granted and never charged for.
+	 */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "MAL|Skill")
+	void ServerUnlockSkill(FGameplayTag SkillTag);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
@@ -116,6 +134,10 @@ protected:
 	/** Menu pushed by ToggleAttributeMenu. Leave empty to disable the attribute panel. */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI")
 	TSubclassOf<UMALMenuWidget> AttributeMenuClass;
+
+	/** Menu pushed by ToggleSkillMenu. Leave empty to disable the skill tree panel. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI")
+	TSubclassOf<UMALMenuWidget> SkillMenuClass;
 
 	/**
 	 * Widget spawned once per floating damage number.

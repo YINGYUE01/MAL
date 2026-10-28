@@ -72,4 +72,18 @@ public:
 
 	UFUNCTION()
 	virtual void OnRep_AttributePoints(const FGameplayAttributeData& OldAttributePoints);
+
+	/**
+	 * Skill points earned by levelling and not yet spent on the skill tree.
+	 *
+	 * Kept apart from AttributePoints on purpose. Both are currencies, but a stat point and a
+	 * skill point buy different things and are meant to be earned and spent on their own rhythm;
+	 * one shared pool would force every player to pick a side.
+	 */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_SkillPoints, Category = "Progression")
+	FGameplayAttributeData SkillPoints;
+	ATTRIBUTE_ACCESSORS(UMALProgressionAttributeSet, SkillPoints)
+
+	UFUNCTION()
+	virtual void OnRep_SkillPoints(const FGameplayAttributeData& OldSkillPoints);
 };

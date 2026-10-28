@@ -7,6 +7,7 @@
 #include "MALClassDefinition.generated.h"
 
 class UMALAbilitySet;
+class UMALSkillTreeDefinition;
 class UCurveTable;
 
 /**
@@ -24,6 +25,16 @@ public:
 	/** Ability sets granted to characters using this class definition */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Class Definition")
 	TArray<TObjectPtr<UMALAbilitySet>> GrantedAbilitySets;
+
+	/**
+	 * The class's full skill pool: every node the skill menu draws, owned or not.
+	 *
+	 * Separate from GrantedAbilitySets, which is the starting kit handed out on possession.
+	 * These are earned: only the nodes present in UMALProgressionComponent::UnlockedSkills are
+	 * granted, and the rest exist so the menu can show what is still out there.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Progression")
+	TObjectPtr<UMALSkillTreeDefinition> SkillTree;
 
 	// --- Progression ---
 
@@ -44,6 +55,17 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Progression", meta = (ClampMin = "0"))
 	int32 AttributePointsPerLevel = 3;
+
+	/**
+	 * Skill points granted for every level gained.
+	 *
+	 * A second currency rather than a share of the attribute points: where a point goes into a
+	 * stat, a skill point buys a whole ability, and letting the player trade one for the other
+	 * would make every build either all stats or all skills. Zero disables skill unlocking
+	 * without touching the tree.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Progression", meta = (ClampMin = "0"))
+	int32 SkillPointsPerLevel = 1;
 
 	/**
 	 * Cap on points that can be put into one primary stat. Zero means no cap.

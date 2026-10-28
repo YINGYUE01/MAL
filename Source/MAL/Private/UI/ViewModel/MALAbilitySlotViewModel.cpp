@@ -18,13 +18,8 @@ void UMALAbilitySlotViewModel::SetInputTag(const FGameplayTag& InInputTag)
 
 void UMALAbilitySlotViewModel::RebindAbility()
 {
-	const FGameplayAbilitySpec* Spec = FindAbilitySpec();
-	const UMALGameplayAbility* Ability = Spec ? Cast<UMALGameplayAbility>(Spec->Ability) : nullptr;
-
-	UE_MVVM_SET_PROPERTY_VALUE(bHasAbility, Ability != nullptr);
-	UE_MVVM_SET_PROPERTY_VALUE(DisplayName, Ability ? Ability->DisplayName : FText::GetEmpty());
-	UE_MVVM_SET_PROPERTY_VALUE(Icon, Ability ? Ability->Icon : TObjectPtr<UTexture2D>());
-
+	// A forced sample: Refresh re-reads the ability on every call now, so a rebind is only the
+	// "do it now" variant of the same work rather than a separate path.
 	Refresh();
 }
 
@@ -33,14 +28,26 @@ void UMALAbilitySlotViewModel::Refresh()
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
 	if (!ASC)
 	{
+		ClearSlot();
 		OnSlotRefreshed.Broadcast();
 		return;
 	}
 
 	const FGameplayAbilityActorInfo* ActorInfo = ASC->AbilityActorInfo.Get();
 	FGameplayAbilitySpec* Spec = FindAbilitySpec();
+	const UMALGameplayAbility* Ability = (Spec && Spec->Ability)
+		? Cast<UMALGameplayAbility>(Spec->Ability)
+		: nullptr;
 
-	if (!Spec || !Spec->Ability || !ActorInfo)
+	// Identity is sampled here as well, not only on a rebind: an unlock only adds a spec to the
+	// ASC and tells nobody, so a slot that re-read its ability on rebind alone kept drawing the
+	// empty frame until the next possession handed the bar a new ASC. The setters compare before
+	// broadcasting, so repeating this on the cooldown tick costs the comparison and nothing else.
+	UE_MVVM_SET_PROPERTY_VALUE(bHasAbility, Ability != nullptr);
+	UE_MVVM_SET_PROPERTY_VALUE(DisplayName, Ability ? Ability->DisplayName : FText::GetEmpty());
+	UE_MVVM_SET_PROPERTY_VALUE(Icon, Ability ? Ability->Icon : TObjectPtr<UTexture2D>());
+
+	if (!Spec || !Ability || !ActorInfo)
 	{
 		UE_MVVM_SET_PROPERTY_VALUE(bIsOnCooldown, false);
 		UE_MVVM_SET_PROPERTY_VALUE(CooldownPercent, 0.0f);
@@ -78,8 +85,13 @@ void UMALAbilitySlotViewModel::OnAbilitySystemReleased()
 {
 	Super::OnAbilitySystemReleased();
 
-	// Not RebindAbility(): the base class swaps the cached ASC after this call, so a rebind here
-	// would still read the old component. Clear the slot directly instead.
+	// Not Refresh(): the base class swaps the cached ASC after this call, so a read here would
+	// still see the old component. Blank the slot directly instead.
+	ClearSlot();
+}
+
+void UMALAbilitySlotViewModel::ClearSlot()
+{
 	UE_MVVM_SET_PROPERTY_VALUE(bHasAbility, false);
 	UE_MVVM_SET_PROPERTY_VALUE(DisplayName, FText::GetEmpty());
 	UE_MVVM_SET_PROPERTY_VALUE(Icon, TObjectPtr<UTexture2D>());

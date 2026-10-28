@@ -130,6 +130,16 @@ public:
 	 */
 	const UMALClassDefinition* GetClassDefinition() const;
 
+	/**
+	 * Server only: drop every granted spec and grant the class kit plus every unlocked skill.
+	 *
+	 * The skill tree is bought while a pawn may already be past its one-shot grant, and a save
+	 * can land after possession for the same reason. Rebuilding from scratch makes both cases
+	 * order-independent and is what keeps the spec count from doubling: GrantAbilities alone
+	 * refuses to run twice, so a refresh has to clear the flag as well as the specs.
+	 */
+	void RefreshGrantedAbilities();
+
 	/** True on the server and on every client once health reached zero. */
 	UFUNCTION(BlueprintPure, Category = "MAL|Death")
 	bool IsDead() const { return bIsDead; }

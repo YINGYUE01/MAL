@@ -11,6 +11,9 @@
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
 #include "Data/MALClassDefinition.h"
 #include "Data/MALAbilitySet.h"
+#include "Data/MALSkillTreeDefinition.h"
+#include "GameAbilities/MALGameplayAbility.h"
+#include "Save/MALSaveSubsystem.h"
 #include "Engine/World.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -339,6 +342,15 @@ void AMALCharacterBase::ApplyDefaultAttributes()
 	{
 		if (UMALProgressionComponent* Progression = OwningPlayerState->GetProgressionComponent())
 		{
+			// Loaded here, between the baseline write above and the reapply below: the file
+			// carries the allocation, and only the reapply knows how to put it back on top of a
+			// freshly written baseline. Loading any earlier would be overwritten by these GEs;
+			// loading any later would stack the points on an already-applied build.
+			if (UMALSaveSubsystem* SaveSubsystem = UMALSaveSubsystem::Get(this))
+			{
+				SaveSubsystem->LoadForPlayer(OwningPlayerState);
+			}
+
 			Progression->ReapplyAttributePoints();
 		}
 	}
@@ -583,9 +595,43 @@ void AMALCharacterBase::GrantAbilities()
 				MALASC->GrantAbilitySet(AbilitySet);
 			}
 		}
+
+		// The earned half of the kit. The ability sets above are handed out on possession; these
+		// are only granted once the player has bought them, which is why the tree has to be read
+		// here and not in the menu.
+		if (const UMALSkillTreeDefinition* Tree = Definition->SkillTree)
+		{
+			if (const AMALPlayerState* MALPlayerState = GetPlayerState<AMALPlayerState>())
+			{
+				if (const UMALProgressionComponent* Progression = MALPlayerState->GetProgressionComponent())
+				{
+					for (const FGameplayTag& SkillTag : Progression->UnlockedSkills)
+					{
+						const FMALSkillNodeDefinition* Node = Tree->FindNode(SkillTag);
+						if (Node && Node->AbilityClass)
+						{
+							MALASC->GrantAbility(Node->AbilityClass, Node->InputTag);
+						}
+					}
+				}
+			}
+		}
 	}
 
 	bAbilitiesGranted = true;
 
 	UE_LOG(LogTemp, Verbose, TEXT("MALCharacterBase::GrantAbilities %s: done"), *GetName());
+}
+
+void AMALCharacterBase::RefreshGrantedAbilities()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// GrantAbilities owns the clear; it only refuses to run twice, so the flag has to come down
+	// before it will rebuild the spec list.
+	bAbilitiesGranted = false;
+	GrantAbilities();
 }

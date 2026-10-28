@@ -138,6 +138,36 @@ void AMALPlayerController::ToggleAttributeMenu()
 	}
 }
 
+void AMALPlayerController::ToggleSkillMenu()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	UMALUISubsystem* UISubsystem = ULocalPlayer::GetSubsystem<UMALUISubsystem>(GetLocalPlayer());
+	if (!UISubsystem)
+	{
+		return;
+	}
+
+	// Matched against the configured class rather than a concrete widget type: the panel is a
+	// blueprint child, and this key is only ever meant to close this key's panel.
+	if (const UMALMenuWidget* TopMenu = UISubsystem->GetTopMenu())
+	{
+		if (SkillMenuClass && TopMenu->IsA(SkillMenuClass))
+		{
+			UISubsystem->PopMenu();
+			return;
+		}
+	}
+
+	if (SkillMenuClass)
+	{
+		UISubsystem->PushMenu(SkillMenuClass);
+	}
+}
+
 void AMALPlayerController::CloseTopMenu()
 {
 	if (!IsLocalController())
@@ -275,6 +305,14 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 			ToggleAttributeMenu();
 		}
 	}
+	else if (InputTag == GameplayTags->Input_SkillMenu)
+	{
+		// Started only, for the same reason as the attribute key above.
+		if (EventType == ETriggerEvent::Started)
+		{
+			ToggleSkillMenu();
+		}
+	}
 	else
 	{
 		// Buffer input for GAS abilities (Attack, Defend, Dash, etc.)
@@ -372,4 +410,27 @@ void AMALPlayerController::ServerSpendAttributePoint_Implementation(EMALPrimaryS
 
 	UE_LOG(LogTemp, Log, TEXT("ServerSpendAttributePoint: %d -> stat %d, %d unspent left."),
 		Count, static_cast<int32>(Stat), Progression->GetAttributePoints());
+}
+
+void AMALPlayerController::ServerUnlockSkill_Implementation(FGameplayTag SkillTag)
+{
+	AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>();
+	UMALProgressionComponent* Progression = MALPS ? MALPS->GetProgressionComponent() : nullptr;
+	if (!Progression)
+	{
+		return;
+	}
+
+	FText Reason;
+	if (!Progression->CanUnlockSkill(SkillTag, Reason))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ServerUnlockSkill: %s refused: %s"),
+			*SkillTag.ToString(), *Reason.ToString());
+		return;
+	}
+
+	if (!Progression->UnlockSkill(SkillTag))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ServerUnlockSkill: %s failed after passing its checks."), *SkillTag.ToString());
+	}
 }

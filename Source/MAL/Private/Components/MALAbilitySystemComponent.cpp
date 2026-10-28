@@ -56,10 +56,7 @@ TArray<FGameplayAbilitySpecHandle> UMALAbilitySystemComponent::GrantAbilitySet(c
 			continue;
 		}
 
-		FGameplayAbilitySpec AbilitySpec(Entry.AbilityClass, Entry.StartingLevel);
-
-		// Resolve the input tag BEFORE GiveAbility so the tag is part of the spec's
-		// initial replication payload (DynamicAbilityTags are replicated with the spec).
+		// An override on the set entry wins over the ability's own tag.
 		FGameplayTag InputTag = Entry.OverrideInputTag;
 		if (!InputTag.IsValid())
 		{
@@ -70,22 +67,42 @@ TArray<FGameplayAbilitySpecHandle> UMALAbilitySystemComponent::GrantAbilitySet(c
 			}
 		}
 
-		if (InputTag.IsValid())
-		{
-			AbilitySpec.GetDynamicSpecSourceTags().AddTag(InputTag);
-		}
-
-		const FGameplayAbilitySpecHandle Handle = GiveAbility(AbilitySpec);
+		const FGameplayAbilitySpecHandle Handle = GrantAbility(Entry.AbilityClass, InputTag, Entry.StartingLevel);
 		if (Handle.IsValid())
 		{
 			GrantedHandles.Add(Handle);
-			GrantedAbilityHandles.Add(Handle);
 		}
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("MALASC::GrantAbilitySet %s: granted %d abilities"), *GetName(), GrantedHandles.Num());
 
 	return GrantedHandles;
+}
+
+FGameplayAbilitySpecHandle UMALAbilitySystemComponent::GrantAbility(
+	TSubclassOf<UGameplayAbility> AbilityClass, FGameplayTag InputTag, int32 Level)
+{
+	if (!AbilityClass || !IsOwnerActorAuthoritative())
+	{
+		return FGameplayAbilitySpecHandle();
+	}
+
+	FGameplayAbilitySpec AbilitySpec(AbilityClass, FMath::Max(Level, 1));
+
+	// Set BEFORE GiveAbility so the tag is part of the spec's initial replication payload
+	// (DynamicAbilityTags are replicated with the spec).
+	if (InputTag.IsValid())
+	{
+		AbilitySpec.GetDynamicSpecSourceTags().AddTag(InputTag);
+	}
+
+	const FGameplayAbilitySpecHandle Handle = GiveAbility(AbilitySpec);
+	if (Handle.IsValid())
+	{
+		GrantedAbilityHandles.Add(Handle);
+	}
+
+	return Handle;
 }
 
 void UMALAbilitySystemComponent::ClearGrantedAbilities()

@@ -10,12 +10,15 @@
 #include "Combat/MALCombatEventsSubsystem.h"
 #include "Curves/RealCurve.h"
 #include "Data/MALClassDefinition.h"
+#include "Data/MALSkillTreeDefinition.h"
 #include "Engine/CurveTable.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 #include "GameplayEffectTypes.h"
+#include "Net/UnrealNetwork.h"
 #include "Player/MALPlayerState.h"
+#include "Save/MALSaveSubsystem.h"
 #include "Tags/MALGameplayTags.h"
 
 namespace
@@ -93,6 +96,22 @@ void UMALProgressionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+void UMALProgressionComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	// COND_None: the owning client draws the skill menu from this set, and any spectator that
+	// ever shows someone else's sheet reads the same list.
+	DOREPLIFETIME(UMALProgressionComponent, UnlockedSkills);
+}
+
+void UMALProgressionComponent::OnRep_UnlockedSkills()
+{
+	// Authority already broadcast when it wrote the array, so this only has work to do on a
+	// client -- but broadcasting unconditionally keeps one redraw path rather than two.
+	OnSkillsChanged.Broadcast();
+}
+
 void UMALProgressionComponent::AddExperience(int32 Amount)
 {
 	// Server only: the level and the banked experience replicate out, so a client writing them
@@ -156,11 +175,19 @@ void UMALProgressionComponent::AddExperience(int32 Amount)
 		const int32 PointsPerLevel = ClassDefinition ? FMath::Max(ClassDefinition->AttributePointsPerLevel, 0) : 0;
 		GrantAttributePoints(GainedLevels * PointsPerLevel);
 
+		// A second currency, paid out on the same beat. Zero is a valid configuration and simply
+		// means this class buys no skills.
+		const int32 SkillPointsPerLevel = ClassDefinition ? FMath::Max(ClassDefinition->SkillPointsPerLevel, 0) : 0;
+		GrantSkillPoints(GainedLevels * SkillPointsPerLevel);
+
 		// Sent before the authority-only broadcast, so every machine learns about the level at the
 		// same moment the server's own listeners do.
 		MulticastPlayLevelUpCue(Level);
 
 		OnLevelChanged.Broadcast(Level);
+
+		// Level is the only thing that moves experience, so this is where the profile changes.
+		RequestAutoSave();
 	}
 
 	// One line per award: rare enough to leave at Log and the only trace of the numbers the
@@ -313,6 +340,8 @@ bool UMALProgressionComponent::SpendAttributePoints(EMALPrimaryStat Stat, int32 
 
 	OnAttributePointsChanged.Broadcast(Available - Count);
 
+	RequestAutoSave();
+
 	return true;
 }
 
@@ -326,6 +355,44 @@ int32 UMALProgressionComponent::GetAllocatedPoints(EMALPrimaryStat Stat) const
 {
 	const int32 Index = static_cast<int32>(Stat);
 	return AllocatedPoints.IsValidIndex(Index) ? AllocatedPoints[Index] : 0;
+}
+
+void UMALProgressionComponent::SetAllocatedPoints(const TArray<int32>& InPoints)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	// Fixed size, index is the stat. A save written by an older build may disagree, so resize
+	// first and copy only what both sides have.
+	AllocatedPoints.SetNum(static_cast<int32>(EMALPrimaryStat::Count));
+
+	for (int32 Index = 0; Index < AllocatedPoints.Num() && Index < InPoints.Num(); ++Index)
+	{
+		AllocatedPoints[Index] = FMath::Max(InPoints[Index], 0);
+	}
+}
+
+void UMALProgressionComponent::RefreshExperienceToNextLevel()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	const AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
+	UMALProgressionAttributeSet* ProgressionSet = GetProgressionSet();
+	UAbilitySystemComponent* AbilitySystemComponent = OwningPlayerState ? OwningPlayerState->GetAbilitySystemComponent() : nullptr;
+	if (!ProgressionSet || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	const int32 Level = FMath::Max(FMath::RoundToInt(ProgressionSet->GetLevel()), 1);
+	AbilitySystemComponent->SetNumericAttributeBase(
+		UMALProgressionAttributeSet::GetExperienceToNextLevelAttribute(),
+		FMath::Max(EvaluateExperienceToNextLevel(Level), 1.0f));
 }
 
 void UMALProgressionComponent::ReapplyAttributePoints()
@@ -347,6 +414,191 @@ void UMALProgressionComponent::ReapplyAttributePoints()
 	for (int32 Index = 0; Index < AllocatedPoints.Num(); ++Index)
 	{
 		AddToPrimaryStatBase(AbilitySystemComponent, static_cast<EMALPrimaryStat>(Index), static_cast<float>(AllocatedPoints[Index]));
+	}
+}
+
+void UMALProgressionComponent::RequestAutoSave()
+{
+	AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
+	if (!OwningPlayerState)
+	{
+		return;
+	}
+
+	if (UMALSaveSubsystem* SaveSubsystem = UMALSaveSubsystem::Get(this))
+	{
+		SaveSubsystem->SaveForPlayer(OwningPlayerState);
+	}
+}
+
+void UMALProgressionComponent::GrantSkillPoints(int32 Count)
+{
+	if (Count <= 0 || !GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
+	UMALProgressionAttributeSet* ProgressionSet = GetProgressionSet();
+	UAbilitySystemComponent* AbilitySystemComponent = OwningPlayerState ? OwningPlayerState->GetAbilitySystemComponent() : nullptr;
+	if (!ProgressionSet || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	const int32 Total = FMath::RoundToInt(ProgressionSet->GetSkillPoints()) + Count;
+
+	// Through the ability system for the same reason the attribute bank is: a direct write to
+	// the set does not fire the change notification the menu listens to.
+	AbilitySystemComponent->SetNumericAttributeBase(
+		UMALProgressionAttributeSet::GetSkillPointsAttribute(), static_cast<float>(Total));
+
+	OnSkillsChanged.Broadcast();
+}
+
+int32 UMALProgressionComponent::GetSkillPoints() const
+{
+	const UMALProgressionAttributeSet* ProgressionSet = GetProgressionSet();
+	return ProgressionSet ? FMath::Max(FMath::RoundToInt(ProgressionSet->GetSkillPoints()), 0) : 0;
+}
+
+bool UMALProgressionComponent::IsSkillUnlocked(FGameplayTag SkillTag) const
+{
+	return SkillTag.IsValid() && UnlockedSkills.Contains(SkillTag);
+}
+
+const UMALSkillTreeDefinition* UMALProgressionComponent::GetSkillTree() const
+{
+	const UMALClassDefinition* ClassDefinition = GetClassDefinition();
+	return ClassDefinition ? ClassDefinition->SkillTree : nullptr;
+}
+
+EMALSkillNodeState UMALProgressionComponent::EvaluateSkillState(FGameplayTag SkillTag, FText& OutReason) const
+{
+	OutReason = FText::GetEmpty();
+
+	const UMALSkillTreeDefinition* Tree = GetSkillTree();
+	const FMALSkillNodeDefinition* Node = Tree ? Tree->FindNode(SkillTag) : nullptr;
+	if (!Node)
+	{
+		// An entry missing from the tree is not something to offer, so it is reported as
+		// unreachable rather than as an unaffordable node.
+		OutReason = NSLOCTEXT("MALSkill", "UnknownSkill", "No such skill in this class's tree.");
+		return EMALSkillNodeState::Locked;
+	}
+
+	if (IsSkillUnlocked(SkillTag))
+	{
+		return EMALSkillNodeState::Unlocked;
+	}
+
+	const AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
+	const int32 Level = OwningPlayerState ? OwningPlayerState->GetProgressionLevel() : 1;
+	if (Level < Node->RequiredLevel)
+	{
+		OutReason = FText::Format(
+			NSLOCTEXT("MALSkill", "LevelTooLow", "Requires level {0}."),
+			FText::AsNumber(Node->RequiredLevel));
+		return EMALSkillNodeState::Locked;
+	}
+
+	for (const FGameplayTag& Prerequisite : Node->Prerequisites)
+	{
+		if (Prerequisite.IsValid() && !IsSkillUnlocked(Prerequisite))
+		{
+			OutReason = NSLOCTEXT("MALSkill", "PrerequisiteMissing", "A prerequisite skill is still locked.");
+			return EMALSkillNodeState::Locked;
+		}
+	}
+
+	// Reachable from here on. The points are reported in the reason rather than by demoting the
+	// state, so the menu can keep the node lit and print why it is not buyable yet.
+	if (GetSkillPoints() < FMath::Max(Node->Cost, 0))
+	{
+		OutReason = NSLOCTEXT("MALSkill", "NotEnoughPoints", "Not enough skill points.");
+	}
+
+	return EMALSkillNodeState::Available;
+}
+
+bool UMALProgressionComponent::CanUnlockSkill(FGameplayTag SkillTag, FText& OutReason) const
+{
+	return EvaluateSkillState(SkillTag, OutReason) == EMALSkillNodeState::Available && OutReason.IsEmpty();
+}
+
+bool UMALProgressionComponent::UnlockSkill(FGameplayTag SkillTag)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+
+	FText Reason;
+	if (!CanUnlockSkill(SkillTag, Reason))
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("UMALProgressionComponent::UnlockSkill %s: refused %s (%s)"),
+			*GetNameSafe(GetOwner()), *SkillTag.ToString(), *Reason.ToString());
+		return false;
+	}
+
+	const UMALSkillTreeDefinition* Tree = GetSkillTree();
+	const FMALSkillNodeDefinition* Node = Tree ? Tree->FindNode(SkillTag) : nullptr;
+	UMALProgressionAttributeSet* ProgressionSet = GetProgressionSet();
+	AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
+	UAbilitySystemComponent* AbilitySystemComponent = OwningPlayerState ? OwningPlayerState->GetAbilitySystemComponent() : nullptr;
+	if (!Node || !ProgressionSet || !AbilitySystemComponent)
+	{
+		return false;
+	}
+
+	// Charge first: if the write is rejected the tag must not land, or the player would own a
+	// skill the server never charged for.
+	const int32 Remaining = GetSkillPoints() - FMath::Max(Node->Cost, 0);
+	AbilitySystemComponent->SetNumericAttributeBase(
+		UMALProgressionAttributeSet::GetSkillPointsAttribute(), static_cast<float>(Remaining));
+
+	UnlockedSkills.Add(SkillTag);
+
+	// Re-grant rather than granting just this node: the pawn may have been possessed after the
+	// set was loaded from a save, in which case the whole set is still missing on the ASC.
+	RefreshGrantedAbilities();
+
+	OnSkillsChanged.Broadcast();
+
+	UE_LOG(LogTemp, Log, TEXT("UMALProgressionComponent::UnlockSkill %s: unlocked %s for %d, %d left"),
+		*GetNameSafe(GetOwner()), *SkillTag.ToString(), Node->Cost, Remaining);
+
+	RequestAutoSave();
+
+	return true;
+}
+
+void UMALProgressionComponent::SetUnlockedSkills(const TArray<FGameplayTag>& InSkills)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	UnlockedSkills = InSkills;
+
+	RefreshGrantedAbilities();
+
+	OnSkillsChanged.Broadcast();
+}
+
+void UMALProgressionComponent::RefreshGrantedAbilities()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	const AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
+	AMALCharacterBase* Pawn = OwningPlayerState ? Cast<AMALCharacterBase>(OwningPlayerState->GetPawn()) : nullptr;
+	if (Pawn)
+	{
+		Pawn->RefreshGrantedAbilities();
 	}
 }
 
