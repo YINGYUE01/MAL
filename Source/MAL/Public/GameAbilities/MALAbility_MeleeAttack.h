@@ -58,6 +58,14 @@ public:
 	virtual void DisableWeaponCollision() override;
 	//~ End IMALComboAttackInterface
 
+	/**
+	 * Prefers the equipped weapon's montage over the ability's own.
+	 *
+	 * A greatsword and a dagger cannot share a swing animation, but they can share the ability:
+	 * the weapon supplies the montage, the ability keeps the hit window, damage and cue logic.
+	 */
+	virtual UAnimMontage* GetAbilityMontage() const override;
+
 protected:
 	// --- Weapon window ---
 

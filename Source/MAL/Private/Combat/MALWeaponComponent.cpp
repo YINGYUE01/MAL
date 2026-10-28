@@ -4,20 +4,132 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
+#include "Character/MALCharacterBase.h"
 #include "Combat/MALDamageExecutor.h"
+#include "Combat/MALWeaponDefinition.h"
+#include "Components/BoxComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameFramework/Actor.h"
+#include "Net/UnrealNetwork.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
 #include "Tags/MALGameplayTags.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(MALWeaponComponent)
+
+namespace
+{
+	/**
+	 * Parent a weapon visual to the character's hand socket and apply the definition's offset.
+	 *
+	 * Both weapon components go through this: a definition that ships a static mesh and one that
+	 * ships a skeletal mesh are meant to be interchangeable, so their placement cannot diverge.
+	 */
+	void PlaceWeaponVisual(USceneComponent* Visual, USkeletalMeshComponent* BodyMesh, const UMALWeaponDefinition& Definition)
+	{
+		if (!Visual)
+		{
+			return;
+		}
+
+		if (BodyMesh)
+		{
+			Visual->AttachToComponent(BodyMesh,
+				FAttachmentTransformRules::SnapToTargetNotIncludingScale,
+				Definition.AttachSocketName);
+		}
+
+		Visual->SetRelativeLocation(Definition.MeshRelativeLocation);
+		Visual->SetRelativeRotation(Definition.MeshRelativeRotation);
+		Visual->SetRelativeScale3D(Definition.MeshRelativeScale);
+	}
+}
 
 UMALWeaponComponent::UMALWeaponComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 
-	// The hit window is driven by the montage notifies that already replicate through the
-	// ability; the component itself has no state a remote client needs.
-	SetIsReplicatedByDefault(false);
+	// Which weapon is equipped changes what every machine draws, so that choice replicates.
+	// The hit window does not: it stays driven by the montage notifies on the server.
+	SetIsReplicatedByDefault(true);
+}
+
+void UMALWeaponComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// The hit box is authored on the character blueprint, so it exists by now. Remember its size
+	// before any definition overwrites it, or an unequip has nothing to restore.
+	CacheAuthoredHitBox();
+
+	const AActor* Owner = GetOwner();
+	if (Owner && Owner->HasAuthority())
+	{
+		// Routed through EquipWeapon so the authority takes the same path as a client that
+		// receives the replicated value.
+		EquipWeapon(StartingWeapon);
+	}
+	else
+	{
+		// A client can begin play before the replicated value arrives. Start from the unarmed
+		// state; OnRep_EquippedWeapon applies whatever the server actually chose.
+		ApplyVisuals();
+		ApplyHitBox();
+	}
+}
+
+void UMALWeaponComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(UMALWeaponComponent, EquippedWeapon);
+}
+
+void UMALWeaponComponent::OnRep_EquippedWeapon()
+{
+	// The definition is an asset, so a client has everything it needs to rebuild the same visuals
+	// and hit volume. Hit detection is deliberately not in this path: it stays on the authority.
+	ApplyVisuals();
+	ApplyHitBox();
+}
+
+void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority())
+	{
+		return;
+	}
+
+	// The old weapon's window is still bound to the old hit volume. Closing it here means the new
+	// weapon never inherits a live overlap or a half-filled hit set.
+	ReleaseCollision();
+
+	if (EquippedWeapon == NewWeapon)
+	{
+		// Handing over the same asset is still a request to re-apply its setup.
+		ApplyVisuals();
+		ApplyHitBox();
+		return;
+	}
+
+	EquippedWeapon = NewWeapon;
+
+	// OnRep only runs on clients, so the authority applies the swap by hand.
+	ApplyVisuals();
+	ApplyHitBox();
+}
+
+void UMALWeaponComponent::UnequipWeapon()
+{
+	EquipWeapon(nullptr);
+}
+
+float UMALWeaponComponent::GetDamageMultiplier() const
+{
+	return EquippedWeapon ? EquippedWeapon->DamageMultiplier : 1.0f;
 }
 
 void UMALWeaponComponent::StartHitWindow(int32 ComboStep, FName CollisionComponentName)
@@ -33,14 +145,18 @@ void UMALWeaponComponent::StartHitWindow(int32 ComboStep, FName CollisionCompone
 	// A window that was never closed would otherwise keep the previous overlap binding.
 	ReleaseCollision();
 
-	CurrentComboStep = ComboStep;
-	ActiveComponentName = CollisionComponentName;
+	// None means "whatever the character authored", which is the name every blueprint in this
+	// project uses. An explicit name lets an ability aim at a second volume, such as a shield.
+	const FName ResolvedName = CollisionComponentName.IsNone() ? HitBoxComponentName : CollisionComponentName;
 
-	CollisionComponent = FindCollisionComponent(CollisionComponentName);
+	CurrentComboStep = ComboStep;
+	ActiveComponentName = ResolvedName;
+
+	CollisionComponent = FindCollisionComponent(ResolvedName);
 	if (!CollisionComponent)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UMALWeaponComponent::StartHitWindow - No component named '%s' found on %s!"),
-			*CollisionComponentName.ToString(), *Owner->GetName());
+			*ResolvedName.ToString(), *Owner->GetName());
 		return;
 	}
 
@@ -70,6 +186,174 @@ void UMALWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	ReleaseCollision();
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void UMALWeaponComponent::ApplyVisuals()
+{
+	AMALCharacterBase* Character = Cast<AMALCharacterBase>(GetOwner());
+	if (!Character)
+	{
+		return;
+	}
+
+	// Restore the blade the previous weapon hid before deciding what the new one hides. The slot
+	// name cannot be read back from EquippedWeapon, which already points at the new definition.
+	if (!HiddenBuiltInSlot.IsNone())
+	{
+		Character->SetBuiltInWeaponHidden(false, HiddenBuiltInSlot);
+		HiddenBuiltInSlot = NAME_None;
+	}
+
+	UStaticMeshComponent* StaticMeshComponent = Character->GetWeaponMesh();
+	USkeletalMeshComponent* SkeletalMeshComponent = Character->GetWeaponSkeletalMesh();
+	if (!StaticMeshComponent && !SkeletalMeshComponent)
+	{
+		return;
+	}
+
+	// Rebuilt on every swap: socket, offset and trail all come from the definition.
+	if (TrailComponent)
+	{
+		TrailComponent->Deactivate();
+		TrailComponent->DestroyComponent();
+		TrailComponent = nullptr;
+	}
+
+	// A rigged weapon takes the skeletal slot and blanks the static one; a plain blade does the
+	// opposite. Both are cleared when nothing is equipped, so a swap never leaves the previous
+	// weapon's mesh behind.
+	const bool bUseSkeletal = EquippedWeapon && EquippedWeapon->WeaponSkeletalMesh != nullptr;
+	const bool bDrawStatic = EquippedWeapon && !bUseSkeletal && EquippedWeapon->WeaponMesh != nullptr;
+
+	if (StaticMeshComponent)
+	{
+		StaticMeshComponent->SetStaticMesh(bDrawStatic ? EquippedWeapon->WeaponMesh.Get() : nullptr);
+		StaticMeshComponent->SetVisibility(bDrawStatic);
+	}
+
+	if (SkeletalMeshComponent)
+	{
+		SkeletalMeshComponent->SetSkeletalMeshAsset(bUseSkeletal ? EquippedWeapon->WeaponSkeletalMesh.Get() : nullptr);
+
+		// Reference pose is the right default: the swing comes from the character, not from the
+		// weapon, so a weapon without an animation of its own is not a defect.
+		SkeletalMeshComponent->SetAnimInstanceClass(bUseSkeletal ? EquippedWeapon->WeaponAnimClass.Get() : nullptr);
+		SkeletalMeshComponent->SetVisibility(bUseSkeletal);
+	}
+
+	if (!EquippedWeapon)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* BodyMesh = Character->GetMesh();
+	PlaceWeaponVisual(StaticMeshComponent, BodyMesh, *EquippedWeapon);
+	PlaceWeaponVisual(SkeletalMeshComponent, BodyMesh, *EquippedWeapon);
+
+	// Only a definition that draws something of its own may hide the character's blade. A skin
+	// has no mesh, and hiding the blade for it would leave the character visibly unarmed.
+	if (EquippedWeapon->bHideBuiltInWeapon && (EquippedWeapon->WeaponMesh || EquippedWeapon->WeaponSkeletalMesh))
+	{
+		Character->SetBuiltInWeaponHidden(true, EquippedWeapon->BuiltInWeaponMaterialSlot);
+		HiddenBuiltInSlot = EquippedWeapon->BuiltInWeaponMaterialSlot;
+	}
+
+	if (EquippedWeapon->TrailEffect)
+	{
+		USceneComponent* TrailParent = bUseSkeletal
+			? static_cast<USceneComponent*>(SkeletalMeshComponent)
+			: static_cast<USceneComponent*>(StaticMeshComponent);
+
+		if (TrailParent)
+		{
+			// Attached to the mesh without a socket on purpose. A socket hands over its own frame,
+			// and a socket added to one of these rigid weapon meshes inherits its bone's
+			// orientation rather than the mesh's, which tilts every user parameter authored in
+			// mesh space away from the blade. Position comes from the socket below instead, so
+			// naming a socket moves the effect without changing its shape.
+			TrailComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+				EquippedWeapon->TrailEffect,
+				TrailParent,
+				NAME_None,
+				FVector::ZeroVector,
+				FRotator::ZeroRotator,
+				EAttachLocation::SnapToTargetIncludingScale,
+				false);
+
+			if (TrailComponent && !EquippedWeapon->TrailSocketName.IsNone())
+			{
+				if (TrailParent->DoesSocketExist(EquippedWeapon->TrailSocketName))
+				{
+					TrailComponent->SetRelativeLocation(
+						TrailParent->GetSocketTransform(EquippedWeapon->TrailSocketName, RTS_Component).GetLocation());
+				}
+				else
+				{
+					// Says which weapon asked for it: the engine's own socket warning names the
+					// component and leaves the definition to be guessed at.
+					UE_LOG(LogTemp, Warning,
+						TEXT("Trail socket '%s' not found on '%s'; the trail starts at the weapon root instead."),
+						*EquippedWeapon->TrailSocketName.ToString(), *TrailParent->GetName());
+				}
+			}
+		}
+	}
+}
+
+UBoxComponent* UMALWeaponComponent::ResolveHitBox()
+{
+	if (HitBox)
+	{
+		return HitBox;
+	}
+
+	// The hit volume is authored on the character, so it can only be resolved once the actor has
+	// its components. Every caller runs from BeginPlay onwards, which is after that.
+	HitBox = Cast<UBoxComponent>(FindCollisionComponent(HitBoxComponentName));
+	return HitBox;
+}
+
+void UMALWeaponComponent::CacheAuthoredHitBox()
+{
+	if (bAuthoredHitBoxCached)
+	{
+		return;
+	}
+
+	UBoxComponent* Box = ResolveHitBox();
+	if (!Box)
+	{
+		return;
+	}
+
+	// Unscaled: definitions author their extent in the same space as the component's own box.
+	AuthoredHitBoxExtent = Box->GetUnscaledBoxExtent();
+	AuthoredHitBoxLocation = Box->GetRelativeLocation();
+	bAuthoredHitBoxCached = true;
+}
+
+void UMALWeaponComponent::ApplyHitBox()
+{
+	UBoxComponent* Box = ResolveHitBox();
+	if (!Box)
+	{
+		return;
+	}
+
+	// Reached on clients through OnRep, which can run before anything else cached the authored
+	// size, so make sure it has been captured.
+	CacheAuthoredHitBox();
+
+	if (EquippedWeapon)
+	{
+		Box->SetBoxExtent(EquippedWeapon->HitBoxExtent);
+		Box->SetRelativeLocation(EquippedWeapon->HitBoxRelativeLocation);
+	}
+	else
+	{
+		Box->SetBoxExtent(AuthoredHitBoxExtent);
+		Box->SetRelativeLocation(AuthoredHitBoxLocation);
+	}
 }
 
 UPrimitiveComponent* UMALWeaponComponent::FindCollisionComponent(FName ComponentName) const

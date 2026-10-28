@@ -59,7 +59,10 @@ void UMALGameplayAbility::ConfigureAbility(FGameplayTag InAbilityTag, FGameplayT
 
 UAbilityTask_PlayMontageAndWait* UMALGameplayAbility::PlayAbilityMontage(FName StartSection)
 {
-	if (!AbilityMontage)
+	// Resolved through a virtual because a subclass may take the montage from somewhere other
+	// than the ability asset, such as the equipped weapon.
+	UAnimMontage* Montage = GetAbilityMontage();
+	if (!Montage)
 	{
 		return nullptr;
 	}
@@ -67,7 +70,7 @@ UAbilityTask_PlayMontageAndWait* UMALGameplayAbility::PlayAbilityMontage(FName S
 	UAbilityTask_PlayMontageAndWait* Task = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
 		this,
 		NAME_None,
-		AbilityMontage,
+		Montage,
 		1.0f,                  // Rate
 		StartSection,
 		true,                  // bStopWhenAbilityEnds

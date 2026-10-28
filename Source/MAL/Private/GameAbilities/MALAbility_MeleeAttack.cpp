@@ -8,6 +8,7 @@
 #include "Character/MALCharacterBase.h"
 #include "Combat/MALDamageExecutor.h"
 #include "Combat/MALWeaponComponent.h"
+#include "Combat/MALWeaponDefinition.h"
 #include "Engine/World.h"
 #include "GameAbilities/MALHitCameraShake.h"
 #include "GameFramework/Character.h"
@@ -237,6 +238,25 @@ UMALWeaponComponent* UMALAbility_MeleeAttack::GetWeaponComponent() const
 	return nullptr;
 }
 
+UAnimMontage* UMALAbility_MeleeAttack::GetAbilityMontage() const
+{
+	// A weapon that ships its own swings wins over the ability asset. Read from the replicated
+	// definition rather than cached at activation: a swap during a combo still plays the new
+	// weapon from the next step on.
+	if (const UMALWeaponComponent* EquippedWeaponComponent = GetWeaponComponent())
+	{
+		if (const UMALWeaponDefinition* Definition = EquippedWeaponComponent->GetEquippedWeapon())
+		{
+			if (Definition->AttackMontage)
+			{
+				return Definition->AttackMontage;
+			}
+		}
+	}
+
+	return Super::GetAbilityMontage();
+}
+
 void UMALAbility_MeleeAttack::OnWeaponHit(const FMALHitResult& HitResult)
 {
 	FMALWeaponHitRequest Request;
@@ -254,6 +274,16 @@ void UMALAbility_MeleeAttack::BuildHitRequest(FMALWeaponHitRequest& OutRequest, 
 	OutRequest.SourceObject = this;
 	OutRequest.DamageGEClass = DamageGEClass;
 	OutRequest.BaseDamage = BaseDamage;
+
+	// Weapons scale the ability's base damage, so a greatsword and a dagger can share one swing
+	// ability. Unarmed and undefined both read as 1.
+	if (const AMALCharacterBase* Character = Cast<AMALCharacterBase>(OutRequest.Instigator))
+	{
+		if (const UMALWeaponComponent* EquippedWeaponComponent = Character->GetWeaponComponent())
+		{
+			OutRequest.BaseDamage *= EquippedWeaponComponent->GetDamageMultiplier();
+		}
+	}
 	OutRequest.ComboDamageBonusPerStep = ComboDamageBonusPerStep;
 	OutRequest.AbilityLevel = GetAbilityLevel();
 	OutRequest.LevelScale = GetLevelScaledValue(TEXT("Damage"), 1.0f);

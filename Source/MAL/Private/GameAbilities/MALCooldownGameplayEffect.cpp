@@ -14,7 +14,6 @@ UMALCooldownGameplayEffect::UMALCooldownGameplayEffect()
 void UMALCooldownGameplayEffect::PostLoad()
 {
 	Super::PostLoad();
-
 	SyncGrantedTags();
 }
 
@@ -29,7 +28,6 @@ void UMALCooldownGameplayEffect::PostCDOCompiled(const FPostCDOCompiledContext& 
 void UMALCooldownGameplayEffect::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
-
 	// The sync rewrites a component, so only run it when the tags themselves moved. Syncing on
 	// every edit would dirty the asset each time an unrelated field is touched in the details panel.
 	if (!PropertyChangedEvent.Property ||
@@ -46,13 +44,10 @@ void UMALCooldownGameplayEffect::SyncGrantedTags()
 	{
 		return;
 	}
-
 	UTargetTagsGameplayEffectComponent& TargetTags = FindOrAddComponent<UTargetTagsGameplayEffectComponent>();
-
 	FInheritedTagContainer TagChanges;
 	TagChanges.Added = CooldownTags;
 	TargetTags.SetAndApplyTargetTagChanges(TagChanges);
-
 	// The component stages the tags; this rebuilds the effect's cached containers so a freshly
 	// loaded asset reports them before anything queries it.
 	// Skipped while the object is still loading. PostCDOCompiled also runs as part of loading a

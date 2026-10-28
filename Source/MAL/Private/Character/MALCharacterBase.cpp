@@ -14,6 +14,7 @@
 #include "Engine/World.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameplayEffect.h"
 #include "AIController.h"
 #include "BrainComponent.h"
@@ -32,6 +33,54 @@ AMALCharacterBase::AMALCharacterBase()
 	// player pawn and the AI-owned enemy pawn before any attack ability activates.
 	WeaponComponent = CreateDefaultSubobject<UMALWeaponComponent>(TEXT("WeaponComponent"));
 	ComboComponent = CreateDefaultSubobject<UMALComboComponent>(TEXT("ComboComponent"));
+
+	// Hangs off the body mesh so it follows the animated weapon bone. The attach socket comes from
+	// the weapon definition (each weapon has its own), so it is set when a weapon is equipped, not
+	// here. Collision is off: the hit volume is the separate weapon_collision box, and a second
+	// blocker moving with the blade would push targets around during a swing.
+	WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
+	WeaponMesh->SetupAttachment(GetMesh());
+	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WeaponMesh->SetGenerateOverlapEvents(false);
+	WeaponMesh->SetCanEverAffectNavigation(false);
+	WeaponMesh->SetVisibility(false);
+
+	// Same role as WeaponMesh, for definitions that ship a rigged weapon. A separate component
+	// because static and skeletal meshes are rendered through different component classes; only
+	// ever one of the two is populated, and the other stays hidden and empty.
+	WeaponSkeletalMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("WeaponSkeletalMesh"));
+	WeaponSkeletalMesh->SetupAttachment(GetMesh());
+	WeaponSkeletalMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WeaponSkeletalMesh->SetGenerateOverlapEvents(false);
+	WeaponSkeletalMesh->SetCanEverAffectNavigation(false);
+	WeaponSkeletalMesh->SetVisibility(false);
+}
+
+void AMALCharacterBase::SetBuiltInWeaponHidden(bool bHide, FName MaterialSlotName)
+{
+	USkeletalMeshComponent* BodyMesh = GetMesh();
+	if (!BodyMesh || MaterialSlotName.IsNone())
+	{
+		return;
+	}
+
+	// INDEX_NONE means this mesh has no such material section, which is the normal case for
+	// characters that do not carry their own blade.
+	const int32 MaterialIndex = BodyMesh->GetMaterialIndex(MaterialSlotName);
+	if (MaterialIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	// Visibility is tracked per LOD, so every LOD has to be told: hiding LOD0 only would make the
+	// blade reappear the moment the character walks far enough away to drop a level.
+	const int32 NumLODs = FMath::Max(BodyMesh->GetNumLODs(), 1);
+	for (int32 LODIndex = 0; LODIndex < NumLODs; ++LODIndex)
+	{
+		// Section index mirrors the material index: ShowMaterialSection only uses it to route
+		// through the LOD's material remap table, which is identity on the authored meshes here.
+		BodyMesh->ShowMaterialSection(MaterialIndex, MaterialIndex, !bHide, LODIndex);
+	}
 }
 
 UAbilitySystemComponent* AMALCharacterBase::GetAbilitySystemComponent() const

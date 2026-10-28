@@ -108,6 +108,15 @@ public:
 	TObjectPtr<UAnimMontage> AbilityMontage;
 
 	/**
+	 * Montage PlayAbilityMontage actually plays.
+	 *
+	 * Defaults to AbilityMontage. Melee abilities override it so the equipped weapon can supply
+	 * its own swings, which is what lets one combo ability drive a sword and a greatsword that
+	 * animate differently.
+	 */
+	virtual UAnimMontage* GetAbilityMontage() const { return AbilityMontage; }
+
+	/**
 	 * Play AbilityMontage and route its lifecycle into OnAbilityMontageEnded.
 	 *
 	 * The engine task already handles replication, blend-out and cancellation; owning the

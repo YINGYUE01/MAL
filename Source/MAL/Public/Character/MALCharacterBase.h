@@ -11,6 +11,8 @@
 
 class UAbilitySystemComponent;
 class UGameplayEffect;
+class USkeletalMeshComponent;
+class UStaticMeshComponent;
 class UMALAbilitySystemComponent;
 class UMALAttributeSet;
 class UMALClassDefinition;
@@ -83,6 +85,35 @@ public:
 	/** Combo state machine shared by player characters and enemies. */
 	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
 	UMALComboComponent* GetComboComponent() const { return ComboComponent; }
+
+	/** Mesh a UMALWeaponDefinition is drawn with. Hidden and empty until something is equipped. */
+	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
+	UStaticMeshComponent* GetWeaponMesh() const { return WeaponMesh; }
+
+	/**
+	 * Weapon visual for definitions that ship a rigged mesh.
+	 *
+	 * Two components rather than one because a component renders either static or skeletal
+	 * meshes, never both: the simple blades in this project are static meshes while the rigged
+	 * weapon packs ship skeletal ones. The equipped definition fills the one it matches and
+	 * blanks the other.
+	 */
+	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
+	USkeletalMeshComponent* GetWeaponSkeletalMesh() const { return WeaponSkeletalMesh; }
+
+	/**
+	 * Show or hide the blade baked into the character mesh.
+	 *
+	 * The Paragon Kwang mesh carries its own weapon as the M05_Weapon material section, skinned
+	 * rigidly to the weapon_r bone. A weapon that brings its own mesh has to hide that section or
+	 * the character ends up holding two blades, and an unequip has to put it back.
+	 *
+	 * A slot the mesh does not have is ignored rather than warned about: only characters whose
+	 * mesh carries a blade have anything to hide, and the same weapon definition is meant to work
+	 * on all of them.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MAL|Combat|Weapon")
+	void SetBuiltInWeaponHidden(bool bHide, FName MaterialSlotName);
 
 	/** Class definition that determines which abilities this character has. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Class")
@@ -242,6 +273,23 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Combat")
 	TObjectPtr<UMALWeaponComponent> WeaponComponent;
+
+	/**
+	 * Visual for a weapon swapped in through UMALWeaponComponent.
+	 *
+	 * One component reused for every weapon rather than one per weapon: swapping assigns a new
+	 * static mesh and re-attaches to the definition's socket, which keeps the component set of
+	 * every character stable no matter how many weapons the game ships.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Combat")
+	TObjectPtr<UStaticMeshComponent> WeaponMesh;
+
+	/**
+	 * Second weapon visual, for definitions that ship a skeletal mesh.
+	 * Carries the same socket and offset as WeaponMesh; only one of the two is ever populated.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Combat")
+	TObjectPtr<USkeletalMeshComponent> WeaponSkeletalMesh;
 
 	/**
 	 * Combo state machine for melee attacks (buffered input, step advancement, recovery).
