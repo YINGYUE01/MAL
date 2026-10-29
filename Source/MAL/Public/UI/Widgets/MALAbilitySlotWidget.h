@@ -44,6 +44,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|UI|Ability|Appearance")
 	TObjectPtr<UTexture2D> IconOverride;
 
+	/**
+	 * Artwork drawn while the slot has no ability to describe itself.
+	 *
+	 * A key starts out naming a skill that is not unlocked yet, so a placeholder keeps the bar
+	 * readable; a granted ability carrying an icon of its own takes over from it. This is what
+	 * makes the bar follow the equipped weapon: the same key shows the placeholder again as soon
+	 * as the new kit stops granting a skill there.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|UI|Ability|Appearance")
+	TObjectPtr<UTexture2D> DefaultIcon;
+
+	/** Tint for DefaultIcon. Dimmer than IconTint so a key without a skill does not read as ready. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|UI|Ability|Appearance")
+	FLinearColor DefaultIconTint = FLinearColor(0.55f, 0.55f, 0.55f, 1.0f);
+
 	/** Label under the icon; empty falls back to the ability's own display name. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|UI|Ability|Appearance")
 	FText DisplayNameOverride;

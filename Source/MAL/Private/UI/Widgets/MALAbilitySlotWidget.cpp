@@ -132,17 +132,31 @@ void UMALAbilitySlotWidget::RefreshFromViewModel()
 		// the fallback, which keeps a finished asset wired without any per-slot setup.
 		UTexture2D* DesiredIcon = IconOverride ? IconOverride.Get() : SlotViewModel->Icon.Get();
 
-		if (DesiredIcon && LastIcon.Get() != DesiredIcon)
+		// Nothing granted for this key, either because the skill is still locked or because the
+		// equipped weapon does not grant one here: draw the slot's own placeholder so the bar
+		// keeps naming a skill instead of leaving a hole where one will appear.
+		bool bUsingDefaultIcon = false;
+		if (!DesiredIcon)
 		{
-			// Uploading the brush is not free and this runs on the cooldown tick, so only touch
-			// it when the icon actually changed.
+			DesiredIcon = DefaultIcon.Get();
+			bUsingDefaultIcon = DesiredIcon != nullptr;
+		}
+
+		// Uploading the brush is not free and this runs on the cooldown tick, so only touch it
+		// when the icon actually changed. A null result is pushed through as well: a slot that
+		// loses its ability keeps drawing the previous artwork otherwise, tinted down to the
+		// placeholder grey but still recognisable as the previous weapon's skill.
+		if (LastIcon.Get() != DesiredIcon)
+		{
 			IconImage->SetBrushFromTexture(DesiredIcon, false);
 			LastIcon = DesiredIcon;
 		}
 
 		if (DesiredIcon)
 		{
-			IconImage->SetColorAndOpacity(IconTint);
+			// A key without a skill stays visible but unlit, so the same placeholder never reads
+			// as a ready skill.
+			IconImage->SetColorAndOpacity(bUsingDefaultIcon ? DefaultIconTint : IconTint);
 		}
 		else
 		{
