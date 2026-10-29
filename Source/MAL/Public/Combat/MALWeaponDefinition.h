@@ -13,6 +13,7 @@ class UAnimInstance;
 class UNiagaraSystem;
 class UAnimMontage;
 class UMALAbilitySet;
+class UMALSkillTreeDefinition;
 
 /**
  * UMALWeaponDefinition
@@ -182,6 +183,20 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Ability")
 	TArray<TObjectPtr<UMALAbilitySet>> GrantedAbilitySets;
+
+	/**
+	 * The skill pool that belongs to this weapon: what the skill menu draws while it is in hand.
+	 *
+	 * Skills live with the weapon rather than with the class because a swap is meant to change
+	 * the whole kit. A node here is bought for this weapon and remembered under its WeaponTag, so
+	 * switching away hides it without refunding anything, and switching back finds it again.
+	 *
+	 * Purchases are filed by WeaponTag, so two definitions sharing a tag share their skills as
+	 * well -- that is how a family of blades keeps one pool. Weapons meant to progress separately
+	 * need separate tags, whatever their trees look like.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Ability")
+	TObjectPtr<UMALSkillTreeDefinition> SkillTree;
 
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 };

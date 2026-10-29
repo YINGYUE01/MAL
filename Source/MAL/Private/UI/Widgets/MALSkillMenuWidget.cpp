@@ -255,6 +255,24 @@ bool UMALSkillMenuWidget::BuildNodeRows()
 
 void UMALSkillMenuWidget::HandleMenuRefreshed()
 {
+	// A swap replaces the whole row set, because each weapon brings its own pool. Compare the
+	// tiles against the models before repainting: a tile still pointing at a model from the old
+	// tree would keep drawing the old weapon's node. Same count with different models is the
+	// common case (two weapons, same number of nodes), so the pointers are what gets compared.
+	bool bRowsMatchModels = MenuViewModel && NodeRows.Num() == MenuViewModel->Nodes.Num();
+	for (int32 Index = 0; bRowsMatchModels && Index < NodeRows.Num(); ++Index)
+	{
+		if (!NodeRows[Index] || NodeRows[Index]->GetNodeViewModel() != MenuViewModel->Nodes[Index])
+		{
+			bRowsMatchModels = false;
+		}
+	}
+
+	if (!bRowsMatchModels)
+	{
+		BuildNodeRows();
+	}
+
 	// Every tile, not just the changed one: a single unlock can move several nodes at once --
 	// the bought one and whatever it unlocked as a prerequisite for something else.
 	for (UMALSkillNodeWidget* Row : NodeRows)

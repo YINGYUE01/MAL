@@ -583,15 +583,6 @@ void AMALCharacterBase::GrantAbilities()
 	MALASC->ClearGrantedAbilities();
 
 	const UMALClassDefinition* Definition = GetClassDefinition();
-	const UMALSkillTreeDefinition* Tree = Definition ? Definition->SkillTree : nullptr;
-
-	// Whatever the player has bought. Null for enemies, which have no player state and so no
-	// progression; their kit is the ability sets alone.
-	const UMALProgressionComponent* Progression = nullptr;
-	if (const AMALPlayerState* MALPlayerState = GetPlayerState<AMALPlayerState>())
-	{
-		Progression = MALPlayerState->GetProgressionComponent();
-	}
 
 	if (!Definition)
 	{
@@ -609,29 +600,9 @@ void AMALCharacterBase::GrantAbilities()
 			}
 		}
 
-		// The earned half of the kit. The ability sets above are handed out on possession; these
-		// are only granted once the player has bought them, which is why the tree has to be read
-		// here and not in the menu.
-		if (Tree && Progression)
-		{
-			for (const FGameplayTag& SkillTag : Progression->GetUnlockedSkills())
-			{
-				const FMALSkillNodeDefinition* Node = Tree->FindNode(SkillTag);
-				if (!Node || !Node->AbilityClass)
-				{
-					continue;
-				}
-
-				// Weapon-gated nodes belong to the weapon layer below. Granting them here as well
-				// would put two specs on the same input tag.
-				if (Node->RequiredWeaponTag.IsValid())
-				{
-					continue;
-				}
-
-				MALASC->GrantAbility(Node->AbilityClass, Node->InputTag);
-			}
-		}
+		// Only the class's own ability sets are handed out here. Earned skills live on the
+		// weapon now and are granted by RefreshWeaponGrantedAbilities below, so a character with
+		// nothing in hand has only whatever these sets carry.
 	}
 
 	bAbilitiesGranted = true;
@@ -678,15 +649,10 @@ void AMALCharacterBase::RefreshWeaponGrantedAbilities()
 		}
 	}
 
-	// Bought skills that ask for this weapon. They stay in the unlocked set when the weapon goes
-	// away -- ownership does not change with what is in hand, only what is granted does.
-	if (!Weapon->WeaponTag.IsValid())
-	{
-		return;
-	}
-
-	const UMALClassDefinition* Definition = GetClassDefinition();
-	const UMALSkillTreeDefinition* Tree = Definition ? Definition->SkillTree : nullptr;
+	// The tree is the weapon's own, and so is every purchase in it: what is left in hand keeps
+	// exactly the nodes that were bought for it. A weapon with no tree simply has no earned
+	// skills beyond its ability sets.
+	const UMALSkillTreeDefinition* Tree = Weapon->SkillTree;
 	const AMALPlayerState* MALPlayerState = GetPlayerState<AMALPlayerState>();
 	const UMALProgressionComponent* Progression = MALPlayerState ? MALPlayerState->GetProgressionComponent() : nullptr;
 	if (!Tree || !Progression)
@@ -694,17 +660,12 @@ void AMALCharacterBase::RefreshWeaponGrantedAbilities()
 		return;
 	}
 
-	for (const FGameplayTag& SkillTag : Progression->GetUnlockedSkills())
+	// Already narrowed to this weapon: the record is filed per weapon, so a tag never arrives
+	// here from another weapon's tree.
+	for (const FGameplayTag& SkillTag : Progression->GetUnlockedSkillsForEquippedWeapon())
 	{
 		const FMALSkillNodeDefinition* Node = Tree->FindNode(SkillTag);
-		if (!Node || !Node->AbilityClass || !Node->RequiredWeaponTag.IsValid())
-		{
-			continue;
-		}
-
-		// Weapon side of the match: a rapier tagged MAL.Weapon.Sword.Rapier satisfies a node
-		// tagged MAL.Weapon.Sword, so a family of blades can share one skill.
-		if (!Weapon->WeaponTag.MatchesTag(Node->RequiredWeaponTag))
+		if (!Node || !Node->AbilityClass)
 		{
 			continue;
 		}

@@ -5,8 +5,10 @@
 #include "AbilitySystem/Attributes/MALProgressionAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Algo/StableSort.h"
+#include "Combat/MALWeaponComponent.h"
 #include "Components/MALProgressionComponent.h"
 #include "Data/MALSkillTreeDefinition.h"
+#include "GameFramework/Pawn.h"
 #include "Player/MALPlayerState.h"
 #include "UI/ViewModel/MALSkillNodeViewModel.h"
 
@@ -24,22 +26,29 @@ void UMALSkillMenuViewModel::InitializeFromPlayerState(AMALPlayerState* InPlayer
 	// SetAbilitySystemComponent therefore returned without firing its callbacks.
 	RefreshAll();
 
+	SelectOpeningNode();
+}
+
+void UMALSkillMenuViewModel::SelectOpeningNode()
+{
 	// Open on something rather than on an empty detail column: the first node the player can
 	// actually buy, or the first row when nothing is affordable yet.
-	if (!SelectedNode && Nodes.Num() > 0)
+	if (SelectedNode || Nodes.Num() == 0)
 	{
-		TObjectPtr<UMALSkillNodeViewModel> Opening = Nodes[0];
-		for (UMALSkillNodeViewModel* Node : Nodes)
-		{
-			if (Node && Node->CanBeUnlocked())
-			{
-				Opening = Node;
-				break;
-			}
-		}
-
-		SelectNode(Opening);
+		return;
 	}
+
+	TObjectPtr<UMALSkillNodeViewModel> Opening = Nodes[0];
+	for (UMALSkillNodeViewModel* Node : Nodes)
+	{
+		if (Node && Node->CanBeUnlocked())
+		{
+			Opening = Node;
+			break;
+		}
+	}
+
+	SelectNode(Opening);
 }
 
 void UMALSkillMenuViewModel::RefreshAll()
@@ -142,11 +151,15 @@ void UMALSkillMenuViewModel::OnAbilitySystemReady(UAbilitySystemComponent* InAbi
 	// component broadcasts from both ends of the wire: on the authority when a node is bought,
 	// and on the client from the rep notify.
 	BindProgression();
+
+	// The rows are the equipped weapon's tree, so a swap has to rebuild them.
+	BindWeapon();
 }
 
 void UMALSkillMenuViewModel::OnAbilitySystemReleased()
 {
 	UnbindProgression();
+	UnbindWeapon();
 
 	Super::OnAbilitySystemReleased();
 }
@@ -186,7 +199,7 @@ void UMALSkillMenuViewModel::BuildNodes()
 	else if (PlayerState)
 	{
 		UE_LOG(LogTemp, Warning,
-			TEXT("UMALSkillMenuViewModel: %s has no skill tree. Assign one on its class definition to fill the panel."),
+			TEXT("UMALSkillMenuViewModel: %s has no skill tree. Assign one on the equipped weapon definition to fill the panel."),
 			*GetNameSafe(PlayerState));
 	}
 
@@ -231,6 +244,51 @@ void UMALSkillMenuViewModel::UnbindProgression()
 
 	BoundProgression.Reset();
 	SkillsChangedHandle.Reset();
+}
+
+void UMALSkillMenuViewModel::BindWeapon()
+{
+	UnbindWeapon();
+
+	const AMALPlayerState* PlayerState = CachedPlayerState.Get();
+	const APawn* Pawn = PlayerState ? PlayerState->GetPawn() : nullptr;
+	UMALWeaponComponent* Weapon = Pawn ? Pawn->FindComponentByClass<UMALWeaponComponent>() : nullptr;
+	if (!Weapon)
+	{
+		// Normal while the pawn is still being spawned; the panel re-initializes once it exists.
+		return;
+	}
+
+	// Same reasoning as BindProgression: bound weakly, because the pawn can be destroyed first.
+	BoundWeapon = Weapon;
+	WeaponChangedHandle = Weapon->OnEquippedWeaponChanged.AddUObject(
+		this, &UMALSkillMenuViewModel::RebuildForEquippedWeapon);
+}
+
+void UMALSkillMenuViewModel::UnbindWeapon()
+{
+	if (UMALWeaponComponent* Weapon = BoundWeapon.Get())
+	{
+		Weapon->OnEquippedWeaponChanged.Remove(WeaponChangedHandle);
+	}
+
+	BoundWeapon.Reset();
+	WeaponChangedHandle.Reset();
+}
+
+void UMALSkillMenuViewModel::RebuildForEquippedWeapon()
+{
+	// The selection belongs to the old pool: the row it points at is about to be destroyed.
+	if (SelectedNode)
+	{
+		SelectedNode->SetSelected(false);
+	}
+
+	UE_MVVM_SET_PROPERTY_VALUE(SelectedNode, nullptr);
+
+	BuildNodes();
+	RefreshAll();
+	SelectOpeningNode();
 }
 
 void UMALSkillMenuViewModel::RefreshSelection()

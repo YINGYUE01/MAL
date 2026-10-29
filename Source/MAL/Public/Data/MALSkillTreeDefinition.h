@@ -77,19 +77,6 @@ struct FMALSkillNodeDefinition
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill")
 	FGameplayTag InputTag;
 
-	/**
-	 * Weapon the player has to be holding for this node to be buyable and granted.
-	 *
-	 * Empty is a general skill: always buyable, always granted, regardless of what is in hand.
-	 * Set, the node is gated on the equipped weapon's own WeaponTag, matched by hierarchy.
-	 *
-	 * Ownership and availability are deliberately separate. Buying the node writes its tag into
-	 * the player's unlocked set for good; swapping to another weapon only takes the ability back
-	 * for as long as that weapon is equipped.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill")
-	FGameplayTag RequiredWeaponTag;
-
 	/** Character level needed before the node can be bought. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill", meta = (ClampMin = "1"))
 	int32 RequiredLevel = 1;
@@ -108,6 +95,39 @@ struct FMALSkillNodeDefinition
 };
 
 /**
+ * FMALUnlockedSkill
+ *
+ * One bought node, paired with the weapon whose tree holds it.
+ *
+ * Ownership is per weapon rather than a flat set of tags. The same tag may appear in two
+ * weapons' trees, and without the pairing the two purchases would collapse into one: buying a
+ * node on one weapon would silently unlock the other's. Nothing here is skill-tree shaped
+ * either, so a weapon can be repointed at another tree without stranding what was bought --
+ * the node is looked up again under the same weapon on the next grant.
+ */
+USTRUCT()
+struct FMALUnlockedSkill
+{
+	GENERATED_BODY()
+
+	FMALUnlockedSkill() = default;
+
+	FMALUnlockedSkill(const FGameplayTag& InWeaponTag, const FGameplayTag& InSkillTag)
+		: WeaponTag(InWeaponTag)
+		, SkillTag(InSkillTag)
+	{
+	}
+
+	/** Weapon that owns the purchase, from its own WeaponTag. Compared exactly, not by hierarchy. */
+	UPROPERTY()
+	FGameplayTag WeaponTag;
+
+	/** The node's own SkillTag. */
+	UPROPERTY()
+	FGameplayTag SkillTag;
+};
+
+/**
  * Name to show for a node, taken from the first source that has one: the node itself, the
  * ability's class default object, then the tag's last segment.
  *
@@ -120,10 +140,10 @@ MAL_API FText MALGetSkillNodeDisplayName(const FMALSkillNodeDefinition& Node);
 /**
  * UMALSkillTreeDefinition
  *
- * The full skill pool of one class: every node the menu draws, owned or not.
+ * The full skill pool of one weapon: every node the menu draws, owned or not.
  *
- * Held by UMALClassDefinition rather than globally, because which skills exist is part of what
- * makes a class a class -- the same reasoning that puts the ability sets and the stat cap there.
+ * Held by UMALWeaponDefinition rather than globally, because which skills exist is part of what
+ * makes a weapon a weapon -- switching weapons is meant to switch the whole kit, menu included.
  */
 UCLASS(BlueprintType)
 class MAL_API UMALSkillTreeDefinition : public UPrimaryDataAsset

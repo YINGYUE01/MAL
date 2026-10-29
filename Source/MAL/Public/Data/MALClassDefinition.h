@@ -27,11 +27,10 @@ public:
 	TArray<TObjectPtr<UMALAbilitySet>> GrantedAbilitySets;
 
 	/**
-	 * The class's full skill pool: every node the skill menu draws, owned or not.
+	 * Unused since skills moved onto the weapon.
 	 *
-	 * Separate from GrantedAbilitySets, which is the starting kit handed out on possession.
-	 * These are earned: only the nodes present in UMALProgressionComponent::UnlockedSkills are
-	 * granted, and the rest exist so the menu can show what is still out there.
+	 * The pool now hangs off UMALWeaponDefinition::SkillTree, so a swap changes the menu as well
+	 * as the kit. Kept so existing class definitions keep loading; nothing reads this field.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Progression")
 	TObjectPtr<UMALSkillTreeDefinition> SkillTree;

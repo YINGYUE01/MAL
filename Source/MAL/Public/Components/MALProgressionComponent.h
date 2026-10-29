@@ -11,6 +11,7 @@
 
 class UMALClassDefinition;
 class UMALProgressionAttributeSet;
+class UMALWeaponDefinition;
 struct FMALDamageResolvedEvent;
 
 /** Fired on the authority, once per AddExperience call that crossed at least one level. */
@@ -98,7 +99,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MAL|Skill")
 	int32 GetSkillPoints() const;
 
-	/** The skill tree this player's class defines, or null when the class has none. */
+	/**
+	 * The skill tree the equipped weapon carries, or null when nothing is in hand or the weapon
+	 * has none. Skills travel with the weapon, so a swap swaps the pool as well.
+	 */
 	const UMALSkillTreeDefinition* GetSkillTree() const;
 
 	/**
@@ -152,17 +156,30 @@ public:
 	// --- Skills ---
 
 	/**
-	 * Nodes the player has bought, as skill tags.
+	 * Every node the player has bought, each paired with the weapon that owns it.
 	 *
-	 * Read-only on purpose: the set is only written by UnlockSkill and SetUnlockedSkills, the two
-	 * paths that also charge the points, re-grant the abilities and broadcast. A writable array
-	 * would let a caller own a skill the server never charged for.
+	 * This is the persistence view: a save has to carry every weapon's purchases at once, while
+	 * only the one in hand is actually granted. GetUnlockedSkillsForEquippedWeapon is the subset
+	 * the granting code wants.
+	 *
+	 * Read-only on purpose: the record is only written by UnlockSkill and SetUnlockedSkills, the
+	 * two paths that also charge the points, re-grant the abilities and broadcast. A writeable
+	 * array would let a caller own a skill the server never charged for.
 	 */
-	const TArray<FGameplayTag>& GetUnlockedSkills() const { return UnlockedSkills; }
+	const TArray<FMALUnlockedSkill>& GetUnlockedSkills() const { return UnlockedSkills; }
+
+	/**
+	 * Tags bought for the weapon in hand, in the order they were bought.
+	 *
+	 * Empty when nothing is equipped: there is no weapon, so there is no pool to own anything in.
+	 * Callers pair this with the same weapon's tree, which is where the nodes are looked up.
+	 */
+	TArray<FGameplayTag> GetUnlockedSkillsForEquippedWeapon() const;
 
 	/** Fired on the authority whenever the set changes, so the menu can redraw without polling. */
 	FMALSkillsChangedSignature OnSkillsChanged;
 
+	/** True when the node has been bought for the weapon in hand. */
 	UFUNCTION(BlueprintPure, Category = "MAL|Skill")
 	bool IsSkillUnlocked(FGameplayTag SkillTag) const;
 
@@ -184,12 +201,12 @@ public:
 	bool UnlockSkill(FGameplayTag SkillTag);
 
 	/**
-	 * Replace the unlocked set wholesale. Server only, for loading a save.
+	 * Replace the unlocked record wholesale. Server only, for loading a save.
 	 *
 	 * Goes through the same broadcast and re-grant as a normal unlock, so a caller never has to
 	 * remember to finish the job itself.
 	 */
-	void SetUnlockedSkills(const TArray<FGameplayTag>& InSkills);
+	void SetUnlockedSkills(const TArray<FMALUnlockedSkill>& InSkills);
 
 	/** Re-read the tree and push every unlocked node onto the pawn's ability system. */
 	void RefreshGrantedAbilities();
@@ -228,6 +245,12 @@ private:
 	/** Owning player's class definition, read through the pawn. Null while the pawn is absent. */
 	const UMALClassDefinition* GetClassDefinition() const;
 
+	/**
+	 * Weapon in the owner's hand, read through the pawn. Null when there is no pawn, no weapon
+	 * component, or nothing equipped.
+	 */
+	const UMALWeaponDefinition* GetEquippedWeapon() const;
+
 	UMALProgressionAttributeSet* GetProgressionSet() const;
 
 	/**
@@ -251,12 +274,12 @@ private:
 	TArray<int32> AllocatedPoints;
 
 	/**
-	 * Nodes the player has bought, as skill tags.
+	 * Nodes the player has bought, each paired with the weapon that owns it.
 	 *
 	 * Replicated rather than derived from the ASC's granted abilities: a granted spec says an
 	 * ability is *active*, not that it was *earned*, and the starting kit is granted the same
 	 * way. The menu needs the difference to grey out what is still out there.
 	 */
 	UPROPERTY(ReplicatedUsing = OnRep_UnlockedSkills)
-	TArray<FGameplayTag> UnlockedSkills;
+	TArray<FMALUnlockedSkill> UnlockedSkills;
 };

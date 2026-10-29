@@ -11,6 +11,7 @@
 class AMALPlayerState;
 class UMALProgressionComponent;
 class UMALSkillNodeViewModel;
+class UMALWeaponComponent;
 
 /** Fired after the panel's visible content was recomputed. Bound by the menu widget. */
 DECLARE_MULTICAST_DELEGATE(FMALSkillMenuRefreshedSignature);
@@ -18,14 +19,17 @@ DECLARE_MULTICAST_DELEGATE(FMALSkillMenuRefreshedSignature);
 /**
  * UMALSkillMenuViewModel
  *
- * The whole skill panel: every node of the class's pool, the points left, and which node the
- * detail column is showing.
+ * The whole skill panel: every node of the equipped weapon's pool, the points left, and which
+ * node the detail column is showing.
  *
  * Owns one node view model per entry of UMALSkillTreeDefinition::Nodes. That is the opposite of
  * what the attribute menu does -- one view model per row, created by the widget -- because the
  * tree is a fixed authored list rather than an enum the widget can enumerate. Building them
  * here means the widget only has to place what it is given, and the state rules stay in one
  * class instead of being split between a view model and a builder loop.
+ *
+ * The pool belongs to the weapon, so a swap replaces the rows: BindWeapon listens to the weapon
+ * component for that and hands the rebuild to the same path InitializeFromPlayerState uses.
  *
  * RefreshAll is the only place node states are computed. Everything that can change an answer
  * -- the level attribute, the skill point attribute, the unlocked set -- funnels into it, so
@@ -42,7 +46,7 @@ class MAL_API UMALSkillMenuViewModel : public UMALUIViewModelBase
 
 public:
 	/**
-	 * Every node of the player's class tree, in draw order: ascending Tier, and inside a tier
+	 * Every node of the equipped weapon's tree, in draw order: ascending Tier, and inside a tier
 	 * the order the tree asset lists them in.
 	 *
 	 * Sorted here rather than in the widget, because the tier bands are only meaningful relative
@@ -119,6 +123,17 @@ private:
 
 	void UnbindProgression();
 
+	/** Listen to the equipped weapon, whose tree is what the rows are built from. */
+	void BindWeapon();
+
+	void UnbindWeapon();
+
+	/** Drop the rows and build them again from whatever is in hand now. */
+	void RebuildForEquippedWeapon();
+
+	/** Open on the first affordable node, or the first row when none is. */
+	void SelectOpeningNode();
+
 	/** Recompute bCanUnlockSelected from the current selection. */
 	void RefreshSelection();
 
@@ -132,4 +147,9 @@ private:
 	TWeakObjectPtr<UMALProgressionComponent> BoundProgression;
 
 	FDelegateHandle SkillsChangedHandle;
+
+	/** Weapon component currently subscribed to, so a swap can be heard. */
+	TWeakObjectPtr<UMALWeaponComponent> BoundWeapon;
+
+	FDelegateHandle WeaponChangedHandle;
 };

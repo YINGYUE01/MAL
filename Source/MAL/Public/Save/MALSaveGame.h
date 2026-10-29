@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Data/MALSkillTreeDefinition.h"
 #include "GameFramework/SaveGame.h"
 #include "GameplayTagContainer.h"
 #include "MALSaveGame.generated.h"
@@ -39,9 +40,15 @@ public:
 	UPROPERTY()
 	int32 SkillPoints = 0;
 
-	/** Skill tree nodes the player has bought. */
+	/**
+	 * Skill tree nodes the player has bought, each with the weapon that owns it.
+	 *
+	 * One entry per purchase across every weapon rather than per weapon a list: nothing is
+	 * granted for a weapon that is not in hand, so the flat record is both smaller and enough to
+	 * rebuild any weapon's kit by filtering.
+	 */
 	UPROPERTY()
-	TArray<FGameplayTag> UnlockedSkills;
+	TArray<FMALUnlockedSkill> UnlockedSkills;
 
 	/**
 	 * Points already put into each primary stat, indexed by EMALPrimaryStat.

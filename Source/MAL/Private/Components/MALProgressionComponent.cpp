@@ -45,26 +45,6 @@ namespace
 			AbilitySystemComponent->SetNumericAttributeBase(Attribute, Base + Delta);
 		}
 	}
-
-	/**
-	 * Human-readable name for a weapon requirement tag.
-	 *
-	 * The last segment, because the tag is the only thing the skill tree holds: it names a weapon
-	 * family, not an asset, and several definitions can share one. "Requires Sword." is the point
-	 * -- the player needs to know which weapon to pick up, not which asset the designer wired.
-	 */
-	FText WeaponTagDisplayName(const FGameplayTag& WeaponTag)
-	{
-		FString FullName = WeaponTag.GetTagName().ToString();
-
-		int32 LastDot = INDEX_NONE;
-		if (FullName.FindLastChar(TEXT('.'), LastDot))
-		{
-			FullName.RightChopInline(LastDot + 1);
-		}
-
-		return FText::FromString(FullName);
-	}
 }
 
 UMALProgressionComponent::UMALProgressionComponent()
@@ -486,13 +466,64 @@ int32 UMALProgressionComponent::GetSkillPoints() const
 
 bool UMALProgressionComponent::IsSkillUnlocked(FGameplayTag SkillTag) const
 {
-	return SkillTag.IsValid() && UnlockedSkills.Contains(SkillTag);
+	if (!SkillTag.IsValid())
+	{
+		return false;
+	}
+
+	// A purchase belongs to one weapon, so a node counts as owned only while that weapon is the
+	// one in hand. The same tag in another weapon's tree is another purchase, not this one.
+	const UMALWeaponDefinition* Weapon = GetEquippedWeapon();
+	if (!Weapon || !Weapon->WeaponTag.IsValid())
+	{
+		return false;
+	}
+
+	return UnlockedSkills.ContainsByPredicate(
+		[Weapon, SkillTag](const FMALUnlockedSkill& Unlocked)
+		{
+			return Unlocked.WeaponTag == Weapon->WeaponTag && Unlocked.SkillTag == SkillTag;
+		});
+}
+
+TArray<FGameplayTag> UMALProgressionComponent::GetUnlockedSkillsForEquippedWeapon() const
+{
+	TArray<FGameplayTag> Tags;
+
+	const UMALWeaponDefinition* Weapon = GetEquippedWeapon();
+	if (!Weapon || !Weapon->WeaponTag.IsValid())
+	{
+		return Tags;
+	}
+
+	// Purchase order is preserved so the spec list a re-grant builds matches the one a first
+	// grant built: two abilities sharing an input tag are resolved in the order they landed.
+	for (const FMALUnlockedSkill& Unlocked : UnlockedSkills)
+	{
+		if (Unlocked.WeaponTag == Weapon->WeaponTag && Unlocked.SkillTag.IsValid())
+		{
+			Tags.Add(Unlocked.SkillTag);
+		}
+	}
+
+	return Tags;
+}
+
+const UMALWeaponDefinition* UMALProgressionComponent::GetEquippedWeapon() const
+{
+	const AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
+	const APawn* OwningPawn = OwningPlayerState ? OwningPlayerState->GetPawn() : nullptr;
+	const UMALWeaponComponent* WeaponComponent =
+		OwningPawn ? OwningPawn->FindComponentByClass<UMALWeaponComponent>() : nullptr;
+	return WeaponComponent ? WeaponComponent->GetEquippedWeapon() : nullptr;
 }
 
 const UMALSkillTreeDefinition* UMALProgressionComponent::GetSkillTree() const
 {
-	const UMALClassDefinition* ClassDefinition = GetClassDefinition();
-	return ClassDefinition ? ClassDefinition->SkillTree : nullptr;
+	// The tree belongs to the weapon, not the class: a swap is meant to change the whole kit,
+	// menu included. Nothing in hand therefore means nothing to show.
+	const UMALWeaponDefinition* Weapon = GetEquippedWeapon();
+	return Weapon ? Weapon->SkillTree : nullptr;
 }
 
 EMALSkillNodeState UMALProgressionComponent::EvaluateSkillState(FGameplayTag SkillTag, FText& OutReason) const
@@ -505,13 +536,23 @@ EMALSkillNodeState UMALProgressionComponent::EvaluateSkillState(FGameplayTag Ski
 	{
 		// An entry missing from the tree is not something to offer, so it is reported as
 		// unreachable rather than as an unaffordable node.
-		OutReason = NSLOCTEXT("MALSkill", "UnknownSkill", "No such skill in this class's tree.");
+		OutReason = NSLOCTEXT("MALSkill", "UnknownSkill", "No such skill in the equipped weapon's tree.");
 		return EMALSkillNodeState::Locked;
 	}
 
 	if (IsSkillUnlocked(SkillTag))
 	{
 		return EMALSkillNodeState::Unlocked;
+	}
+
+	// The tree is the weapon's, so a node is that weapon's skill by construction. What is left to
+	// check is that the weapon can be named at all: the purchase is recorded against its tag, and
+	// a weapon without one would take the points and forget the node.
+	const UMALWeaponDefinition* Weapon = GetEquippedWeapon();
+	if (!Weapon || !Weapon->WeaponTag.IsValid())
+	{
+		OutReason = NSLOCTEXT("MALSkill", "WeaponUnnamed", "Requires a weapon.");
+		return EMALSkillNodeState::Locked;
 	}
 
 	const AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
@@ -522,25 +563,6 @@ EMALSkillNodeState UMALProgressionComponent::EvaluateSkillState(FGameplayTag Ski
 			NSLOCTEXT("MALSkill", "LevelTooLow", "Requires level {0}."),
 			FText::AsNumber(Node->RequiredLevel));
 		return EMALSkillNodeState::Locked;
-	}
-
-	// Weapon gate, ahead of the prerequisites because it is not a spending problem: no amount of
-	// levels or points makes the node buyable while the wrong weapon is in hand. The same check
-	// runs again on the server inside UnlockSkill, so a forged request cannot skip it.
-	if (Node->RequiredWeaponTag.IsValid())
-	{
-		const APawn* OwningPawn = OwningPlayerState ? OwningPlayerState->GetPawn() : nullptr;
-		const UMALWeaponComponent* WeaponComponent =
-			OwningPawn ? OwningPawn->FindComponentByClass<UMALWeaponComponent>() : nullptr;
-		const UMALWeaponDefinition* Weapon = WeaponComponent ? WeaponComponent->GetEquippedWeapon() : nullptr;
-
-		if (!Weapon || !Weapon->WeaponTag.MatchesTag(Node->RequiredWeaponTag))
-		{
-			OutReason = FText::Format(
-				NSLOCTEXT("MALSkill", "WeaponRequired", "Requires {0}."),
-				WeaponTagDisplayName(Node->RequiredWeaponTag));
-			return EMALSkillNodeState::Locked;
-		}
 	}
 
 	for (const FGameplayTag& Prerequisite : Node->Prerequisites)
@@ -591,12 +613,13 @@ bool UMALProgressionComponent::UnlockSkill(FGameplayTag SkillTag)
 		return false;
 	}
 
+	const UMALWeaponDefinition* Weapon = GetEquippedWeapon();
 	const UMALSkillTreeDefinition* Tree = GetSkillTree();
 	const FMALSkillNodeDefinition* Node = Tree ? Tree->FindNode(SkillTag) : nullptr;
 	UMALProgressionAttributeSet* ProgressionSet = GetProgressionSet();
 	AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
 	UAbilitySystemComponent* AbilitySystemComponent = OwningPlayerState ? OwningPlayerState->GetAbilitySystemComponent() : nullptr;
-	if (!Node || !ProgressionSet || !AbilitySystemComponent)
+	if (!Weapon || !Weapon->WeaponTag.IsValid() || !Node || !ProgressionSet || !AbilitySystemComponent)
 	{
 		return false;
 	}
@@ -607,7 +630,9 @@ bool UMALProgressionComponent::UnlockSkill(FGameplayTag SkillTag)
 	AbilitySystemComponent->SetNumericAttributeBase(
 		UMALProgressionAttributeSet::GetSkillPointsAttribute(), static_cast<float>(Remaining));
 
-	UnlockedSkills.Add(SkillTag);
+	// Filed under the weapon in hand: the record is per weapon, so buying the same tag on another
+	// weapon is a separate purchase rather than a second name for this one.
+	UnlockedSkills.Emplace(Weapon->WeaponTag, SkillTag);
 
 	// Re-grant rather than granting just this node: the pawn may have been possessed after the
 	// set was loaded from a save, in which case the whole set is still missing on the ASC.
@@ -623,7 +648,7 @@ bool UMALProgressionComponent::UnlockSkill(FGameplayTag SkillTag)
 	return true;
 }
 
-void UMALProgressionComponent::SetUnlockedSkills(const TArray<FGameplayTag>& InSkills)
+void UMALProgressionComponent::SetUnlockedSkills(const TArray<FMALUnlockedSkill>& InSkills)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
