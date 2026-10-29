@@ -576,7 +576,9 @@ void AMALCharacterBase::GrantAbilities()
 		return;
 	}
 
-	// Clear first so respawn/re-possession cannot duplicate specs or input tags.
+	// Clear first so respawn/re-possession cannot duplicate specs or input tags. This clears the
+	// character's own key only, so a re-grant leaves the abilities an equipped weapon filed under
+	// its own key in place -- the old flat list deleted those and had no way to hand them back.
 	MALASC->ClearGrantedAbilities();
 
 	const UMALClassDefinition* Definition = GetClassDefinition();

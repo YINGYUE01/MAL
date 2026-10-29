@@ -38,7 +38,7 @@ FGameplayEffectContextHandle UMALAbilitySystemComponent::MakeEffectContext() con
 	return Context;
 }
 
-TArray<FGameplayAbilitySpecHandle> UMALAbilitySystemComponent::GrantAbilitySet(const UMALAbilitySet* AbilitySet)
+TArray<FGameplayAbilitySpecHandle> UMALAbilitySystemComponent::GrantAbilitySet(const UMALAbilitySet* AbilitySet, FName SourceKey)
 {
 	TArray<FGameplayAbilitySpecHandle> GrantedHandles;
 
@@ -47,7 +47,8 @@ TArray<FGameplayAbilitySpecHandle> UMALAbilitySystemComponent::GrantAbilitySet(c
 		return GrantedHandles;
 	}
 
-	UE_LOG(LogTemp, Verbose, TEXT("MALASC::GrantAbilitySet %s -> %s"), *GetName(), *GetNameSafe(AbilitySet));
+	UE_LOG(LogTemp, Verbose, TEXT("MALASC::GrantAbilitySet %s -> %s under '%s'"),
+		*GetName(), *GetNameSafe(AbilitySet), *SourceKey.ToString());
 
 	for (const FMALAbilitySetEntry& Entry : AbilitySet->Abilities)
 	{
@@ -67,20 +68,21 @@ TArray<FGameplayAbilitySpecHandle> UMALAbilitySystemComponent::GrantAbilitySet(c
 			}
 		}
 
-		const FGameplayAbilitySpecHandle Handle = GrantAbility(Entry.AbilityClass, InputTag, Entry.StartingLevel);
+		const FGameplayAbilitySpecHandle Handle = GrantAbility(Entry.AbilityClass, InputTag, Entry.StartingLevel, SourceKey);
 		if (Handle.IsValid())
 		{
 			GrantedHandles.Add(Handle);
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("MALASC::GrantAbilitySet %s: granted %d abilities"), *GetName(), GrantedHandles.Num());
+	UE_LOG(LogTemp, Log, TEXT("MALASC::GrantAbilitySet %s: granted %d abilities under '%s'"),
+		*GetName(), GrantedHandles.Num(), *SourceKey.ToString());
 
 	return GrantedHandles;
 }
 
 FGameplayAbilitySpecHandle UMALAbilitySystemComponent::GrantAbility(
-	TSubclassOf<UGameplayAbility> AbilityClass, FGameplayTag InputTag, int32 Level)
+	TSubclassOf<UGameplayAbility> AbilityClass, FGameplayTag InputTag, int32 Level, FName SourceKey)
 {
 	if (!AbilityClass || !IsOwnerActorAuthoritative())
 	{
@@ -99,25 +101,40 @@ FGameplayAbilitySpecHandle UMALAbilitySystemComponent::GrantAbility(
 	const FGameplayAbilitySpecHandle Handle = GiveAbility(AbilitySpec);
 	if (Handle.IsValid())
 	{
-		GrantedAbilityHandles.Add(Handle);
+		GrantedAbilityHandles.FindOrAdd(SourceKey).Add(Handle);
 	}
 
 	return Handle;
 }
 
-void UMALAbilitySystemComponent::ClearGrantedAbilities()
+void UMALAbilitySystemComponent::ClearGrantedAbilities(FName SourceKey)
 {
 	if (!IsOwnerActorAuthoritative())
 	{
 		return;
 	}
 
-	for (const FGameplayAbilitySpecHandle& Handle : GrantedAbilityHandles)
+	TArray<FGameplayAbilitySpecHandle>* Handles = GrantedAbilityHandles.Find(SourceKey);
+	if (!Handles)
+	{
+		// Nothing was ever filed under this key. Normal on the first grant of a session, since
+		// callers clear before they grant, so it is not worth a warning.
+		return;
+	}
+
+	for (const FGameplayAbilitySpecHandle& Handle : *Handles)
 	{
 		ClearAbility(Handle);
 	}
 
-	GrantedAbilityHandles.Empty();
+	// Logged because a missing ability reads as a bug in whatever should have granted it. This
+	// says which key gave it up and how many went with it.
+	UE_LOG(LogTemp, Log, TEXT("MALASC::ClearGrantedAbilities %s: removed %d abilities under '%s'"),
+		*GetName(), Handles->Num(), *SourceKey.ToString());
+
+	// Only this key's entry. Every other source keeps its specs, which is the whole reason the
+	// handles are filed apart rather than kept in one list.
+	GrantedAbilityHandles.Remove(SourceKey);
 }
 
 bool UMALAbilitySystemComponent::UpgradeAbilityByInputTag(const FGameplayTag& InputTag)

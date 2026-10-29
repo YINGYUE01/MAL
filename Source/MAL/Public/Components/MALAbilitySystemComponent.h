@@ -30,15 +30,22 @@ public:
 	/**
 	 * Grant all abilities from an AbilitySet, storing the InputTag in DynamicAbilityTags.
 	 * Returns the granted spec handles so the caller can remove them later.
+	 *
+	 * SourceKey names who is handing the abilities out. ClearGrantedAbilities works one key at a
+	 * time, so a caller with a key of its own -- an equipped weapon, say -- can take its abilities
+	 * back without disturbing the character's kit.
+	 *
 	 * Server only.
 	 */
-	TArray<FGameplayAbilitySpecHandle> GrantAbilitySet(const UMALAbilitySet* AbilitySet);
+	TArray<FGameplayAbilitySpecHandle> GrantAbilitySet(
+		const UMALAbilitySet* AbilitySet,
+		FName SourceKey = NAME_None);
 
 	/**
-	 * Grant one ability, tagging its spec with InputTag and remembering the handle.
+	 * Grant one ability, tagging its spec with InputTag and filing the handle under SourceKey.
 	 *
 	 * The single-skill path behind both GrantAbilitySet and the skill tree. Sharing it is what
-	 * keeps GrantedAbilityHandles complete: ClearGrantedAbilities only clears what was recorded
+	 * keeps the handle registry complete: ClearGrantedAbilities only clears what was recorded
 	 * here, so a skill granted around this function would survive a re-grant and stack up.
 	 *
 	 * Server only; returns an invalid handle when the class is null or this is not the authority.
@@ -47,10 +54,20 @@ public:
 	FGameplayAbilitySpecHandle GrantAbility(
 		TSubclassOf<UGameplayAbility> AbilityClass,
 		FGameplayTag InputTag = FGameplayTag(),
-		int32 Level = 1);
+		int32 Level = 1,
+		FName SourceKey = NAME_None);
 
-	/** Remove every ability granted through GrantAbilitySet. Server only. */
-	void ClearGrantedAbilities();
+	/**
+	 * Remove every ability filed under SourceKey. Server only.
+	 *
+	 * Scoped to one source rather than "clear everything" on purpose. The character rebuilds its
+	 * whole kit after every skill purchase and every save load; against a flat list, that rebuild
+	 * also deleted whatever an equipped weapon had granted, and GrantAbilities -- which knows
+	 * nothing about weapons -- had no way to hand it back. The abilities vanished silently.
+	 *
+	 * NAME_None is the character's own kit: the class ability sets and the bought skill nodes.
+	 */
+	void ClearGrantedAbilities(FName SourceKey = NAME_None);
 
 	/** Upgrade an ability by its InputTag (Server only) */
 	bool UpgradeAbilityByInputTag(const FGameplayTag& InputTag);
@@ -83,8 +100,13 @@ protected:
 	/** Last value per input tag, used by UMALGameplayAbility::InputPressed/Released. */
 	TMap<FGameplayTag, FInputActionValue> LastInputValues;
 
-	/** Handles granted through GrantAbilitySet. */
-	TArray<FGameplayAbilitySpecHandle> GrantedAbilityHandles;
+	/**
+	 * Handles this component granted, filed by who asked for them.
+	 *
+	 * Grouped rather than flat because the two kinds of caller re-grant on unrelated schedules:
+	 * buying a skill rebuilds the character's kit and must leave a weapon's abilities alone.
+	 */
+	TMap<FName, TArray<FGameplayAbilitySpecHandle>> GrantedAbilityHandles;
 
 	/** Override to replicate direct input for abilities with bReplicateInputDirectly. */
 	virtual void AbilitySpecInputPressed(FGameplayAbilitySpec& Spec) override;
