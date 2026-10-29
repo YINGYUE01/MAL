@@ -185,6 +185,13 @@ protected:
 	TSubclassOf<UMALDamageNumberWidget> DamageNumberWidgetClass;
 
 private:
+	/**
+	 * Shared body of the menu keys: closes the panel when it is the one on top, otherwise pushes
+	 * MenuClass. PanelType is the C++ class matched against the open panel rather than the
+	 * configured blueprint, so swapping the asset cannot leave a panel this key no longer closes.
+	 */
+	void ToggleMenuOfType(TSubclassOf<UMALMenuWidget> MenuClass, UClass* PanelType);
+
 	/** Watch this pawn's weapon component for equips; drops whatever was watched before. */
 	void BindToWeaponComponent();
 

@@ -97,6 +97,12 @@ public:
 	void ClearAbilityInput();
 
 protected:
+	/**
+	 * Records the input value and appends the handles it matches to OutHandles. Shared by the
+	 * press and release entry points, which differ only in which buffer they fill.
+	 */
+	void BufferInputByTag(const FGameplayTag& InputTag, const FInputActionValue& Value, TArray<FGameplayAbilitySpecHandle>& OutHandles);
+
 	/** Buffered handles for input pressed this frame */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;
 

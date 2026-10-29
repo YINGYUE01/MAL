@@ -74,6 +74,29 @@ void UMALUIViewModelBase::UnbindAllAttributes()
 	AttributeBindings.Reset();
 }
 
+void UMALUIViewModelBase::StartTicker(TFunction<bool(float)>&& TickFunction)
+{
+	if (ViewModelTicker.IsValid() || !TickFunction)
+	{
+		return;
+	}
+
+	ViewModelTicker = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateWeakLambda(this, [this, TickFunction = MoveTemp(TickFunction)](float DeltaTime)
+		{
+			return TickFunction(DeltaTime);
+		}));
+}
+
+void UMALUIViewModelBase::StopTicker()
+{
+	if (ViewModelTicker.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ViewModelTicker);
+		ViewModelTicker.Reset();
+	}
+}
+
 void UMALUIViewModelBase::HandleAttributeChanged(const FOnAttributeChangeData& ChangeData)
 {
 	// Copy the callback out before invoking it: a handler that rebinds attributes would

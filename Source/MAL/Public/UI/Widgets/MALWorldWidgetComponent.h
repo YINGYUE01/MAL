@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/WidgetComponent.h"
+#include "UI/Framework/MALRetryPoll.h"
 #include "MALWorldWidgetComponent.generated.h"
 
 class UMALStatViewModel;
@@ -74,12 +75,9 @@ private:
 	/** Hand the view model to the instantiated widget. Safe to call more than once. */
 	void PushViewModelToWidget();
 
-	void StopRetryTimer();
-	void ArmRetryTimer(float Interval);
-
 	UPROPERTY(Transient)
 	TObjectPtr<UMALStatViewModel> StatViewModel;
 
-	FTimerHandle BindRetryTimer;
-	int32 BindRetryCount = 0;
+	/** Poll that waits for the owning actor's ASC to appear. */
+	FMALRetryPoll BindRetryPoll;
 };

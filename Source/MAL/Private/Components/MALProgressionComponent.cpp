@@ -264,30 +264,45 @@ void UMALProgressionComponent::MulticastPlayLevelUpCue_Implementation(int32 NewL
 	AbilitySystemComponent->ExecuteGameplayCue(LevelUpCueTag, CueParameters);
 }
 
-void UMALProgressionComponent::GrantAttributePoints(int32 Count)
+bool UMALProgressionComponent::AddToPointBank(const FGameplayAttribute& Attribute, int32 CurrentTotal, int32 Count, int32& OutNewTotal)
 {
+	OutNewTotal = CurrentTotal;
+
 	if (Count <= 0 || !GetOwner() || !GetOwner()->HasAuthority())
 	{
-		return;
+		return false;
 	}
 
-	AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
-	UMALProgressionAttributeSet* ProgressionSet = GetProgressionSet();
+	const AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
 	UAbilitySystemComponent* AbilitySystemComponent = OwningPlayerState ? OwningPlayerState->GetAbilitySystemComponent() : nullptr;
-	if (!ProgressionSet || !AbilitySystemComponent)
+	if (!AbilitySystemComponent)
+	{
+		return false;
+	}
+
+	OutNewTotal = CurrentTotal + Count;
+
+	// Written through the ability system rather than straight onto the set: the menu's add buttons
+	// listen for the attribute to know when the bank has anything in it, and a direct write to the
+	// set does not fire that broadcast on the authority.
+	AbilitySystemComponent->SetNumericAttributeBase(Attribute, static_cast<float>(OutNewTotal));
+	return true;
+}
+
+void UMALProgressionComponent::GrantAttributePoints(int32 Count)
+{
+	const UMALProgressionAttributeSet* ProgressionSet = GetProgressionSet();
+	if (!ProgressionSet)
 	{
 		return;
 	}
 
-	const int32 Total = FMath::RoundToInt(ProgressionSet->GetAttributePoints()) + Count;
-
-	// Written through the ability system rather than straight onto the set: the attribute panel's
-	// add buttons listen for this attribute to know when the bank has anything in it, and a
-	// direct SetAttributePoints write does not fire that broadcast on the authority.
-	AbilitySystemComponent->SetNumericAttributeBase(
-		UMALProgressionAttributeSet::GetAttributePointsAttribute(), static_cast<float>(Total));
-
-	OnAttributePointsChanged.Broadcast(Total);
+	int32 Total = 0;
+	if (AddToPointBank(UMALProgressionAttributeSet::GetAttributePointsAttribute(),
+		FMath::RoundToInt(ProgressionSet->GetAttributePoints()), Count, Total))
+	{
+		OnAttributePointsChanged.Broadcast(Total);
+	}
 }
 
 bool UMALProgressionComponent::SpendAttributePoints(EMALPrimaryStat Stat, int32 Count)
@@ -435,27 +450,18 @@ void UMALProgressionComponent::RequestAutoSave()
 
 void UMALProgressionComponent::GrantSkillPoints(int32 Count)
 {
-	if (Count <= 0 || !GetOwner() || !GetOwner()->HasAuthority())
+	const UMALProgressionAttributeSet* ProgressionSet = GetProgressionSet();
+	if (!ProgressionSet)
 	{
 		return;
 	}
 
-	AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
-	UMALProgressionAttributeSet* ProgressionSet = GetProgressionSet();
-	UAbilitySystemComponent* AbilitySystemComponent = OwningPlayerState ? OwningPlayerState->GetAbilitySystemComponent() : nullptr;
-	if (!ProgressionSet || !AbilitySystemComponent)
+	int32 Total = 0;
+	if (AddToPointBank(UMALProgressionAttributeSet::GetSkillPointsAttribute(),
+		FMath::RoundToInt(ProgressionSet->GetSkillPoints()), Count, Total))
 	{
-		return;
+		OnSkillsChanged.Broadcast();
 	}
-
-	const int32 Total = FMath::RoundToInt(ProgressionSet->GetSkillPoints()) + Count;
-
-	// Through the ability system for the same reason the attribute bank is: a direct write to
-	// the set does not fire the change notification the menu listens to.
-	AbilitySystemComponent->SetNumericAttributeBase(
-		UMALProgressionAttributeSet::GetSkillPointsAttribute(), static_cast<float>(Total));
-
-	OnSkillsChanged.Broadcast();
 }
 
 int32 UMALProgressionComponent::GetSkillPoints() const

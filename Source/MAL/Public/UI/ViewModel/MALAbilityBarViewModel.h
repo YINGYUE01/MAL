@@ -66,12 +66,11 @@ protected:
 private:
 	void ApplyAbilitySystemToSlots(UAbilitySystemComponent* InAbilitySystemComponent);
 
+	/** Resets the refresh cadence and arms the ticker that sweeps every slot. */
 	void StartCooldownTicker();
-	void StopCooldownTicker();
 
 	/** Advances the refresh cadence; always returns true so the ticker survives idle gaps. */
 	bool TickCooldowns(float DeltaTime);
 
-	FTSTicker::FDelegateHandle CooldownTicker;
 	float RefreshAccumulator = 0.0f;
 };

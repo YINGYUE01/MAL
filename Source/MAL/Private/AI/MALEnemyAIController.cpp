@@ -64,7 +64,7 @@ namespace
 		}
 
 		const FString Indent = FString::ChrN(Depth * 2, TEXT(' '));
-		UE_LOG(LogTemp, Log, TEXT("MAL|AI|Tree: %s%s '%s'"),
+		UE_LOG(LogTemp, Verbose, TEXT("MAL|AI|Tree: %s%s '%s'"),
 			*Indent, *Node->GetClass()->GetName(), *Node->GetNodeName());
 
 		const UBTCompositeNode* Composite = Cast<UBTCompositeNode>(Node);
@@ -79,7 +79,7 @@ namespace
 			{
 				if (Decorator)
 				{
-					UE_LOG(LogTemp, Log, TEXT("MAL|AI|Tree: %s  [decorator] %s (%s)"),
+					UE_LOG(LogTemp, Verbose, TEXT("MAL|AI|Tree: %s  [decorator] %s (%s)"),
 						*Indent, *Decorator->GetClass()->GetName(), *Decorator->GetStaticDescription());
 				}
 			}
@@ -532,7 +532,7 @@ void AMALEnemyAIController::HandleTargetPerceptionUpdated(AActor* Actor, FAIStim
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("MALEnemyAIController %s: perception update actor=%s sensed=%d age=%.2f"),
+	UE_LOG(LogTemp, Verbose, TEXT("MALEnemyAIController %s: perception update actor=%s sensed=%d age=%.2f"),
 		*GetName(), *Actor->GetName(), Stimulus.WasSuccessfullySensed() ? 1 : 0, Stimulus.GetAge());
 
 	APawn* MyPawn = GetPawn();
@@ -581,7 +581,7 @@ void AMALEnemyAIController::HandleTargetPerceptionUpdated(AActor* Actor, FAIStim
 	Blackboard->SetValueAsObject(MALAIBlackboardKeys::TargetActor, Actor);
 	Blackboard->SetValueAsVector(MALAIBlackboardKeys::LastKnownLocation, Actor->GetActorLocation());
 
-	UE_LOG(LogTemp, Warning, TEXT("MALEnemyAIController %s: perceived target %s"),
+	UE_LOG(LogTemp, Verbose, TEXT("MALEnemyAIController %s: perceived target %s"),
 		*GetName(), *Actor->GetName());
 }
 

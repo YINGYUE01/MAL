@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
-#include "AbilitySystem/Attributes/MALAttributeMacros.h"
+// ATTRIBUTE_ACCESSORS_BASIC expands to inline getters that call through the owning ASC, which
+// needs the complete type; AttributeSet.h only forward-declares it.
+#include "AbilitySystemComponent.h"
 #include "MALProgressionAttributeSet.generated.h"
 
 /**
@@ -37,7 +39,7 @@ public:
 	/** Current character level. Never below 1. */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Level, Category = "Progression")
 	FGameplayAttributeData Level;
-	ATTRIBUTE_ACCESSORS(UMALProgressionAttributeSet, Level)
+	ATTRIBUTE_ACCESSORS_BASIC(UMALProgressionAttributeSet, Level)
 
 	UFUNCTION()
 	virtual void OnRep_Level(const FGameplayAttributeData& OldLevel);
@@ -45,7 +47,7 @@ public:
 	/** Experience banked inside the current level, already net of what earlier levels consumed. */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Experience, Category = "Progression")
 	FGameplayAttributeData Experience;
-	ATTRIBUTE_ACCESSORS(UMALProgressionAttributeSet, Experience)
+	ATTRIBUTE_ACCESSORS_BASIC(UMALProgressionAttributeSet, Experience)
 
 	UFUNCTION()
 	virtual void OnRep_Experience(const FGameplayAttributeData& OldExperience);
@@ -53,7 +55,7 @@ public:
 	/** Experience needed to leave the current level: the denominator of the HUD bar. */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_ExperienceToNextLevel, Category = "Progression")
 	FGameplayAttributeData ExperienceToNextLevel;
-	ATTRIBUTE_ACCESSORS(UMALProgressionAttributeSet, ExperienceToNextLevel)
+	ATTRIBUTE_ACCESSORS_BASIC(UMALProgressionAttributeSet, ExperienceToNextLevel)
 
 	UFUNCTION()
 	virtual void OnRep_ExperienceToNextLevel(const FGameplayAttributeData& OldExperienceToNextLevel);
@@ -68,7 +70,7 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_AttributePoints, Category = "Progression")
 	FGameplayAttributeData AttributePoints;
-	ATTRIBUTE_ACCESSORS(UMALProgressionAttributeSet, AttributePoints)
+	ATTRIBUTE_ACCESSORS_BASIC(UMALProgressionAttributeSet, AttributePoints)
 
 	UFUNCTION()
 	virtual void OnRep_AttributePoints(const FGameplayAttributeData& OldAttributePoints);
@@ -82,7 +84,7 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_SkillPoints, Category = "Progression")
 	FGameplayAttributeData SkillPoints;
-	ATTRIBUTE_ACCESSORS(UMALProgressionAttributeSet, SkillPoints)
+	ATTRIBUTE_ACCESSORS_BASIC(UMALProgressionAttributeSet, SkillPoints)
 
 	UFUNCTION()
 	virtual void OnRep_SkillPoints(const FGameplayAttributeData& OldSkillPoints);

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/Ticker.h"
 #include "MVVMViewModelBase.h"
 #include "AttributeSet.h"
 #include "GameplayEffectTypes.h"
@@ -65,10 +66,24 @@ protected:
 	/** Remove every listener registered through BindAttribute. */
 	void UnbindAllAttributes();
 
+	/**
+	 * Drive TickFunction from the core ticker. A no-op while a ticker is already running, so a
+	 * caller can start it from every path that needs one; TickFunction returns false to stop.
+	 *
+	 * Weak lambda internally: the core ticker outlives the UObject and has no way to learn it
+	 * was collected.
+	 */
+	void StartTicker(TFunction<bool(float)>&& TickFunction);
+
+	/** Stop the ticker started by StartTicker. Safe to call when none is running. */
+	void StopTicker();
+
 private:
 	void HandleAttributeChanged(const FOnAttributeChangeData& ChangeData);
 
 	TWeakObjectPtr<UAbilitySystemComponent> CachedAbilitySystemComponent;
 
 	TArray<FMALAttributeBinding> AttributeBindings;
+
+	FTSTicker::FDelegateHandle ViewModelTicker;
 };

@@ -239,6 +239,13 @@ protected:
 	void MulticastPlayLevelUpCue(int32 NewLevel);
 
 private:
+	/**
+	 * Shared body of the two point banks: adds Count to Attribute on the authority and reports the
+	 * new total. Returns false when the write did not happen (client, missing owner, Count <= 0),
+	 * so the caller can skip its broadcast.
+	 */
+	bool AddToPointBank(const FGameplayAttribute& Attribute, int32 CurrentTotal, int32 Count, int32& OutNewTotal);
+
 	/** Narrow the world-wide kill bus down to this player's own kills. */
 	void HandleDamageResolved(const FMALDamageResolvedEvent& Event);
 

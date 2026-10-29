@@ -15,21 +15,16 @@
 
 namespace
 {
-	/** Every spendable stat, in enum order, used when the blueprint leaves RowStats empty. */
-	void AppendAllPrimaryRowStats(TArray<EMALPrimaryStat>& OutStats)
+	/**
+	 * Every value of a Count-terminated enum, in enum order. Fallback for when the blueprint
+	 * leaves the row list empty: an empty list means show them all.
+	 */
+	template <typename TEnum>
+	void AppendAllRowStats(TArray<TEnum>& OutStats)
 	{
-		for (int32 Index = 0; Index < static_cast<int32>(EMALPrimaryStat::Count); ++Index)
+		for (int32 Index = 0; Index < static_cast<int32>(TEnum::Count); ++Index)
 		{
-			OutStats.Add(static_cast<EMALPrimaryStat>(Index));
-		}
-	}
-
-	/** Same fallback for the derived list: an empty SecondaryRowStats means show them all. */
-	void AppendAllSecondaryRowStats(TArray<EMALSecondaryStat>& OutStats)
-	{
-		for (int32 Index = 0; Index < static_cast<int32>(EMALSecondaryStat::Count); ++Index)
-		{
-			OutStats.Add(static_cast<EMALSecondaryStat>(Index));
+			OutStats.Add(static_cast<TEnum>(Index));
 		}
 	}
 }
@@ -180,7 +175,7 @@ bool UMALAttributeMenuWidget::BuildRows()
 	TArray<EMALPrimaryStat> PrimaryStats = RowStats;
 	if (PrimaryStats.Num() == 0)
 	{
-		AppendAllPrimaryRowStats(PrimaryStats);
+		AppendAllRowStats(PrimaryStats);
 	}
 
 	RejectedRows += BuildPage(PrimaryRowsBox, PrimaryStats.Num(),
@@ -216,7 +211,7 @@ bool UMALAttributeMenuWidget::BuildRows()
 	TArray<EMALSecondaryStat> SecondaryStats = SecondaryRowStats;
 	if (SecondaryStats.Num() == 0)
 	{
-		AppendAllSecondaryRowStats(SecondaryStats);
+		AppendAllRowStats(SecondaryStats);
 	}
 
 	RejectedRows += BuildPage(SecondaryRowsBox, SecondaryStats.Num(),

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
 #include "GameplayTagContainer.h"
+#include "UI/Framework/MALRetryPoll.h"
 #include "UI/Widgets/MALUserWidget.h"
 #include "MALHUDWidget.generated.h"
 
@@ -104,8 +105,6 @@ protected:
 
 private:
 	void TryBindAbilitySystem();
-	void StopRetryTimer();
-	void ArmRetryTimer(float Interval);
 
 	/**
 	 * Hand the progression view model to nested widgets that cannot inherit it.
@@ -126,6 +125,7 @@ private:
 	void PublishAbilitySystemToNestedWidgets(UAbilitySystemComponent* InAbilitySystemComponent);
 
 	TWeakObjectPtr<APlayerController> OwningPlayerController;
-	FTimerHandle BindRetryTimer;
-	int32 BindRetryCount = 0;
+
+	/** Poll that waits for the PlayerState's ASC to replicate in. */
+	FMALRetryPoll BindRetryPoll;
 };

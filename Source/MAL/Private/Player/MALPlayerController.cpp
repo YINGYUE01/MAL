@@ -113,8 +113,16 @@ void AMALPlayerController::TogglePauseMenu()
 
 void AMALPlayerController::ToggleAttributeMenu()
 {
-	UE_LOG(LogTemp, Log, TEXT("MALInput: ToggleAttributeMenu class=%s"), AttributeMenuClass ? *AttributeMenuClass->GetName() : TEXT("None"));
+	ToggleMenuOfType(AttributeMenuClass, UMALAttributeMenuWidget::StaticClass());
+}
 
+void AMALPlayerController::ToggleSkillMenu()
+{
+	ToggleMenuOfType(SkillMenuClass, UMALSkillMenuWidget::StaticClass());
+}
+
+void AMALPlayerController::ToggleMenuOfType(TSubclassOf<UMALMenuWidget> MenuClass, UClass* PanelType)
+{
 	if (!IsLocalController())
 	{
 		return;
@@ -130,51 +138,16 @@ void AMALPlayerController::ToggleAttributeMenu()
 	// attribute key a second, less predictable way to dismiss the pause menu.
 	if (const UMALMenuWidget* TopMenu = UISubsystem->GetTopMenu())
 	{
-		if (TopMenu->IsA<UMALAttributeMenuWidget>())
+		if (PanelType && TopMenu->IsA(PanelType))
 		{
 			UISubsystem->PopMenu();
 			return;
 		}
 	}
 
-	if (AttributeMenuClass)
+	if (MenuClass)
 	{
-		UMALMenuWidget* Pushed = UISubsystem->PushMenu(AttributeMenuClass);
-		UE_LOG(LogTemp, Log, TEXT("MALInput: pushed %s"), *GetNameSafe(Pushed));
-	}
-}
-
-void AMALPlayerController::ToggleSkillMenu()
-{
-	UE_LOG(LogTemp, Log, TEXT("MALInput: ToggleSkillMenu class=%s"), SkillMenuClass ? *SkillMenuClass->GetName() : TEXT("None"));
-
-	if (!IsLocalController())
-	{
-		return;
-	}
-
-	UMALUISubsystem* UISubsystem = ULocalPlayer::GetSubsystem<UMALUISubsystem>(GetLocalPlayer());
-	if (!UISubsystem)
-	{
-		return;
-	}
-
-	// Same rule as the attribute key: only this panel's own key closes it. Matched against the
-	// C++ type rather than the configured class, so swapping the blueprint cannot leave an open
-	// panel that this key no longer recognises.
-	if (const UMALMenuWidget* TopMenu = UISubsystem->GetTopMenu())
-	{
-		if (TopMenu->IsA<UMALSkillMenuWidget>())
-		{
-			UISubsystem->PopMenu();
-			return;
-		}
-	}
-
-	if (SkillMenuClass)
-	{
-		UMALMenuWidget* Pushed = UISubsystem->PushMenu(SkillMenuClass);
-		UE_LOG(LogTemp, Log, TEXT("MALInput: pushed %s"), *GetNameSafe(Pushed));
+		UISubsystem->PushMenu(MenuClass);
 	}
 }
 
@@ -204,7 +177,7 @@ void AMALPlayerController::SetupInputComponent()
 
 			for (const FMALInputActionMapping& Mapping : InputConfig->AbilityInputActions)
 			{
-				UE_LOG(LogTemp, Log, TEXT("MALInput: bound %s -> %s"), *Mapping.InputTag.ToString(), *GetNameSafe(Mapping.Action));
+				UE_LOG(LogTemp, Verbose, TEXT("MALInput: bound %s -> %s"), *Mapping.InputTag.ToString(), *GetNameSafe(Mapping.Action));
 			}
 		}
 		else
@@ -229,13 +202,6 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 	}
 
 	UMALGameplayTags* GameplayTags = UMALGameplayTags::Get();
-
-	// Move and Look repeat every frame; only the discrete actions are worth a line each.
-	if (InputTag != GameplayTags->Input_Move && InputTag != GameplayTags->Input_Look)
-	{
-		UE_LOG(LogTemp, Log, TEXT("MALInput: tag=%s event=%s"), *InputTag.ToString(),
-			*StaticEnum<ETriggerEvent>()->GetNameStringByValue(static_cast<int64>(EventType)));
-	}
 
 	// Cache the ASC once; used for both movement lock and ability input routing.
 	UMALAbilitySystemComponent* MALASC = nullptr;

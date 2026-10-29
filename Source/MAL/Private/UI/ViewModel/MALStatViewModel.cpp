@@ -116,7 +116,7 @@ void UMALStatViewModel::OnAbilitySystemReleased()
 	Super::OnAbilitySystemReleased();
 
 	// The bars must not keep ticking against the previous character's values.
-	StopBarTicker();
+	StopTicker();
 	HealthBar = FMALBarSmoothingState();
 	ManaBar = FMALBarSmoothingState();
 
@@ -235,24 +235,8 @@ bool UMALStatViewModel::TickBars(float DeltaTime)
 
 void UMALStatViewModel::StartBarTicker()
 {
-	if (BarTicker.IsValid())
+	StartTicker([this](float DeltaTime)
 	{
-		return;
-	}
-
-	// Weak lambda: the core ticker outlives the UObject and has no way to learn it was collected.
-	BarTicker = FTSTicker::GetCoreTicker().AddTicker(
-		FTickerDelegate::CreateWeakLambda(this, [this](float DeltaTime)
-		{
-			return TickBars(DeltaTime);
-		}));
-}
-
-void UMALStatViewModel::StopBarTicker()
-{
-	if (BarTicker.IsValid())
-	{
-		FTSTicker::GetCoreTicker().RemoveTicker(BarTicker);
-		BarTicker.Reset();
-	}
+		return TickBars(DeltaTime);
+	});
 }

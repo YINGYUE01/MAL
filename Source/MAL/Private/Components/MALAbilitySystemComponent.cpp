@@ -171,23 +171,15 @@ bool UMALAbilitySystemComponent::UpgradeAbilityByInputTag(const FGameplayTag& In
 
 void UMALAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& InputTag, const FInputActionValue& Value)
 {
-	if (!InputTag.IsValid())
-	{
-		return;
-	}
-
-	LastInputValues.Add(InputTag, Value);
-
-	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
-	{
-		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
-		{
-			InputPressedSpecHandles.AddUnique(Spec.Handle);
-		}
-	}
+	BufferInputByTag(InputTag, Value, InputPressedSpecHandles);
 }
 
 void UMALAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag& InputTag, const FInputActionValue& Value)
+{
+	BufferInputByTag(InputTag, Value, InputReleasedSpecHandles);
+}
+
+void UMALAbilitySystemComponent::BufferInputByTag(const FGameplayTag& InputTag, const FInputActionValue& Value, TArray<FGameplayAbilitySpecHandle>& OutHandles)
 {
 	if (!InputTag.IsValid())
 	{
@@ -200,7 +192,7 @@ void UMALAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag& Inp
 	{
 		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
 		{
-			InputReleasedSpecHandles.AddUnique(Spec.Handle);
+			OutHandles.AddUnique(Spec.Handle);
 		}
 	}
 }

@@ -22,8 +22,6 @@ public:
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
-	UMALAttributeSet* GetHealthSet() const { return HealthSet; }
-
 	/** Generic accessor used by AMALCharacterBase (players take the set from the PlayerState). */
 	UMALAttributeSet* GetAttributeSet() const { return HealthSet; }
 

@@ -23,7 +23,7 @@ void UMALAbilitySlotWidget::NativeConstruct()
 
 void UMALAbilitySlotWidget::NativeDestruct()
 {
-	StopResolveRetryTimer();
+	SlotResolvePoll.Reset(GetWorld());
 	ReleaseSlotViewModel();
 
 	Super::NativeDestruct();
@@ -47,25 +47,16 @@ void UMALAbilitySlotWidget::TryResolveSlotViewModel()
 	if (!BarViewModel || !BarViewModel->Slots.IsValidIndex(SlotIndex))
 	{
 		// The HUD builds its bar during InitializeForPlayer, which can land after this widget is
-		// constructed. Poll instead of binding once and staying permanently empty.
-		if (!ResolveRetryTimer.IsValid())
-		{
-			UWorld* World = GetWorld();
-			if (World)
-			{
-				World->GetTimerManager().SetTimer(
-					ResolveRetryTimer,
-					this,
-					&UMALAbilitySlotWidget::TryResolveSlotViewModel,
-					FMath::Max(ResolveRetryInterval, 0.02f),
-					true);
-			}
-		}
+		// constructed. Poll instead of binding once and staying permanently empty; the interval is
+		// fixed, so the fast phase covers the whole life of the poll.
+		SlotResolvePoll.OnMiss(GetWorld(),
+			FTimerDelegate::CreateUObject(this, &UMALAbilitySlotWidget::TryResolveSlotViewModel),
+			ResolveRetryInterval, MAX_int32, ResolveRetryInterval);
 
 		return;
 	}
 
-	StopResolveRetryTimer();
+	SlotResolvePoll.Reset(GetWorld());
 
 	UMALAbilitySlotViewModel* Resolved = BarViewModel->Slots[SlotIndex].Get();
 	if (Resolved == SlotViewModel)
@@ -84,18 +75,6 @@ void UMALAbilitySlotWidget::TryResolveSlotViewModel()
 
 	// Push it into MVVM as well, so a view binding authored in the slot blueprint keeps firing.
 	SetViewModelByClass(SlotViewModel.Get());
-}
-
-void UMALAbilitySlotWidget::StopResolveRetryTimer()
-{
-	if (ResolveRetryTimer.IsValid())
-	{
-		if (UWorld* World = GetWorld())
-		{
-			World->GetTimerManager().ClearTimer(ResolveRetryTimer);
-		}
-		ResolveRetryTimer.Invalidate();
-	}
 }
 
 void UMALAbilitySlotWidget::ReleaseSlotViewModel()

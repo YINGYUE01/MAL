@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UI/Framework/MALRetryPoll.h"
 #include "UI/Widgets/MALUserWidget.h"
 #include "MALAbilitySlotWidget.generated.h"
 
@@ -127,7 +128,6 @@ protected:
 
 private:
 	void TryResolveSlotViewModel();
-	void StopResolveRetryTimer();
 	void ReleaseSlotViewModel();
 
 	/** Repaint from the slot's current values. Driven by the view model, not by a widget tick. */
@@ -142,5 +142,6 @@ private:
 	/** Countdown string currently on the widget; rebuilt only when the digit changes. */
 	FText LastCooldownLabel;
 
-	FTimerHandle ResolveRetryTimer;
+	/** Poll that waits for the bar view model to be built. */
+	FMALRetryPoll SlotResolvePoll;
 };

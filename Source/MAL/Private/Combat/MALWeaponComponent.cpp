@@ -68,9 +68,9 @@ void UMALWeaponComponent::BeginPlay()
 	if (Owner && Owner->HasAuthority())
 	{
 		// Routed through EquipWeapon so the authority takes the same path as a client that
-		// receives the replicated value. The loadout wins once it is configured; StartingWeapon
-		// stays as the fallback for a blueprint that has no list yet.
-		EquipWeapon(Loadout.Num() > 0 ? Loadout[0].Get() : StartingWeapon.Get());
+		// receives the replicated value. The first loadout entry is the starting weapon; an empty
+		// list still goes through EquipWeapon so the bar and the hit box get their first broadcast.
+		EquipWeapon(Loadout.Num() > 0 ? Loadout[0].Get() : nullptr);
 	}
 	else
 	{

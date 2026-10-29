@@ -47,7 +47,7 @@ void UMALWorldWidgetComponent::BeginPlay()
 
 void UMALWorldWidgetComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	StopRetryTimer();
+	BindRetryPoll.Reset(GetWorld());
 
 	// Unbind before the widget is released so the view model cannot push into a dead widget.
 	if (StatViewModel)
@@ -66,7 +66,7 @@ void UMALWorldWidgetComponent::SetAbilitySystemComponent(UAbilitySystemComponent
 	}
 
 	StatViewModel->SetAbilitySystemComponent(InAbilitySystemComponent);
-	StopRetryTimer();
+	BindRetryPoll.Reset(GetWorld());
 }
 
 void UMALWorldWidgetComponent::ResolveOwnerAbilitySystem()
@@ -79,43 +79,17 @@ void UMALWorldWidgetComponent::ResolveOwnerAbilitySystem()
 	if (UAbilitySystemComponent* AbilitySystemComponent = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner()))
 	{
 		StatViewModel->SetAbilitySystemComponent(AbilitySystemComponent);
-		StopRetryTimer();
+		BindRetryPoll.Reset(GetWorld());
 		return;
 	}
 
 	// Enemies own their ASC as a subobject so this normally succeeds on the first try; the retry
-	// covers actors that grant it later (spawned summons, pooled enemies).
-	if (!BindRetryTimer.IsValid())
-	{
-		// First miss: arm the fast poll and start counting from zero.
-		BindRetryCount = 0;
-		ArmRetryTimer(AbilitySystemBindRetryInterval);
-		return;
-	}
-
-	// Past the fast window the ASC is not merely late, so ease off to one attempt per second
-	// rather than keeping a 10 Hz poll alive for the lifetime of the nameplate.
-	if (++BindRetryCount == FMath::Max(AbilitySystemBindFastRetryCount, 1))
-	{
-		StopRetryTimer();
-		ArmRetryTimer(AbilitySystemBindSlowRetryInterval);
-	}
-}
-
-void UMALWorldWidgetComponent::ArmRetryTimer(float Interval)
-{
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	World->GetTimerManager().SetTimer(
-		BindRetryTimer,
-		this,
-		&UMALWorldWidgetComponent::ResolveOwnerAbilitySystem,
-		FMath::Max(Interval, 0.02f),
-		true);
+	// covers actors that grant it later (spawned summons, pooled enemies). Past the fast window
+	// the poll drops to one attempt per second and never stops, so a pooled enemy that is
+	// released and reused still gets picked up.
+	BindRetryPoll.OnMiss(GetWorld(),
+		FTimerDelegate::CreateUObject(this, &UMALWorldWidgetComponent::ResolveOwnerAbilitySystem),
+		AbilitySystemBindRetryInterval, AbilitySystemBindFastRetryCount, AbilitySystemBindSlowRetryInterval);
 }
 
 void UMALWorldWidgetComponent::PushViewModelToWidget()
@@ -134,17 +108,5 @@ void UMALWorldWidgetComponent::PushViewModelToWidget()
 	else
 	{
 		UserWidget->SetViewModelByName(StatViewModelName, StatViewModel);
-	}
-}
-
-void UMALWorldWidgetComponent::StopRetryTimer()
-{
-	if (BindRetryTimer.IsValid())
-	{
-		if (UWorld* World = GetWorld())
-		{
-			World->GetTimerManager().ClearTimer(BindRetryTimer);
-		}
-		BindRetryTimer.Invalidate();
 	}
 }

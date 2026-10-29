@@ -10,8 +10,6 @@
 class UBoxComponent;
 class UNiagaraComponent;
 class UPrimitiveComponent;
-class USkeletalMeshComponent;
-class UStaticMeshComponent;
 class UMALWeaponDefinition;
 
 /** Broadcast once per target per hit window (server only). */
@@ -93,9 +91,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
 	UMALWeaponDefinition* GetEquippedWeapon() const { return EquippedWeapon; }
 
-	/** The weapons CycleWeapon walks through, in order. Read-only so the list stays authored. */
-	const TArray<TObjectPtr<UMALWeaponDefinition>>& GetLoadout() const { return Loadout; }
-
 	/** Damage scale of the equipped weapon. 1 while unarmed. */
 	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
 	float GetDamageMultiplier() const;
@@ -162,18 +157,8 @@ private:
 	void ReleaseCollision();
 
 	/**
-	 * Weapon the character starts with. Applied on the server in BeginPlay, which is also what
-	 * seeds the replicated property for the clients that join later.
-	 *
-	 * Used only when Loadout is empty: a character whose blueprint has the list configured starts
-	 * on its first entry instead, so this stays as the fallback that keeps an unconfigured
-	 * blueprint from starting the player empty-handed.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|Combat")
-	TObjectPtr<UMALWeaponDefinition> StartingWeapon;
-
-	/**
-	 * Weapons the character can cycle through, in wheel order.
+	 * Weapons the character can cycle through, in wheel order. The first entry is also the weapon
+	 * the character starts with, applied on the server in BeginPlay.
 	 *
 	 * This list is the whole inventory for now: there is no pickup or unlock, so whatever is here
 	 * is what the player has from the start. Kept on the component rather than in an asset of its

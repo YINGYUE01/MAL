@@ -10,8 +10,6 @@
 
 class UAISenseConfig_Sight;
 class UBehaviorTree;
-class UBehaviorTreeComponent;
-class UBlackboardComponent;
 class UBlackboardData;
 struct FMALDamageResolvedEvent;
 

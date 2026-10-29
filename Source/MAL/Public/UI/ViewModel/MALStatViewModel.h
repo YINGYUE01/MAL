@@ -175,8 +175,8 @@ private:
 	void PushHealthBars();
 	void PushManaBars();
 
+	/** Arms the shared ticker that advances both pairs. */
 	void StartBarTicker();
-	void StopBarTicker();
 
 	/** Advances both bar pairs; returns false once every layer has reached its target. */
 	bool TickBars(float DeltaTime);
@@ -186,6 +186,4 @@ private:
 
 	/** Runtime state of the mana bar pair. */
 	FMALBarSmoothingState ManaBar;
-
-	FTSTicker::FDelegateHandle BarTicker;
 };

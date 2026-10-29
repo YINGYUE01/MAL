@@ -14,9 +14,4 @@ UMALDamageGameplayEffect::UMALDamageGameplayEffect()
 	FGameplayEffectExecutionDefinition DamageExecution;
 	DamageExecution.CalculationClass = UMALDamageExecutionCalculation::StaticClass();
 	Executions.Add(DamageExecution);
-
-	UE_LOG(LogTemp, Verbose, TEXT("UMALDamageGameplayEffect: executions=%d modifiers=%d calculation=%s"),
-		Executions.Num(),
-		Modifiers.Num(),
-		DamageExecution.CalculationClass ? *DamageExecution.CalculationClass->GetName() : TEXT("None"));
 }

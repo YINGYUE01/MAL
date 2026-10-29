@@ -47,7 +47,7 @@ void UMALAbilityBarViewModel::OnAbilitySystemReleased()
 {
 	Super::OnAbilitySystemReleased();
 
-	StopCooldownTicker();
+	StopTicker();
 
 	// Passing nullptr walks each slot through its own release path, which clears the icon and
 	// the cooldown so a detached bar cannot keep showing the previous owner's abilities.
@@ -67,28 +67,12 @@ void UMALAbilityBarViewModel::ApplyAbilitySystemToSlots(UAbilitySystemComponent*
 
 void UMALAbilityBarViewModel::StartCooldownTicker()
 {
-	if (CooldownTicker.IsValid())
-	{
-		return;
-	}
-
 	RefreshAccumulator = 0.0f;
 
-	// Weak lambda: the core ticker outlives the UObject and has no way to learn it was collected.
-	CooldownTicker = FTSTicker::GetCoreTicker().AddTicker(
-		FTickerDelegate::CreateWeakLambda(this, [this](float DeltaTime)
-		{
-			return TickCooldowns(DeltaTime);
-		}));
-}
-
-void UMALAbilityBarViewModel::StopCooldownTicker()
-{
-	if (CooldownTicker.IsValid())
+	StartTicker([this](float DeltaTime)
 	{
-		FTSTicker::GetCoreTicker().RemoveTicker(CooldownTicker);
-		CooldownTicker.Reset();
-	}
+		return TickCooldowns(DeltaTime);
+	});
 }
 
 bool UMALAbilityBarViewModel::TickCooldowns(float DeltaTime)

@@ -7,7 +7,6 @@
 #include "MALAnimInstance.generated.h"
 
 class AMALCharacterBase;
-class UCharacterMovementComponent;
 
 UENUM(BlueprintType)
 enum class EMALLocomotionState : uint8

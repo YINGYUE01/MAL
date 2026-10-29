@@ -38,6 +38,4 @@ UMALBuffGameplayEffect::UMALBuffGameplayEffect()
 	StackLimitCount = 1;
 	StackDurationRefreshPolicy = EGameplayEffectStackingDurationPolicy::RefreshOnSuccessfulApplication;
 	StackPeriodResetPolicy = EGameplayEffectStackingPeriodPolicy::ResetOnSuccessfulApplication;
-
-	UE_LOG(LogTemp, Verbose, TEXT("UMALBuffGameplayEffect: modifiers=%d cues=%d"), Modifiers.Num(), GameplayCues.Num());
 }

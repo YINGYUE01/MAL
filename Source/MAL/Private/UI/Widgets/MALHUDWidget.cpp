@@ -175,59 +175,21 @@ void UMALHUDWidget::TryBindAbilitySystem()
 		AbilityBarViewModel->SetAbilitySystemComponent(AbilitySystemComponent);
 		ProgressionViewModel->SetAbilitySystemComponent(AbilitySystemComponent);
 		PublishAbilitySystemToNestedWidgets(AbilitySystemComponent);
-		StopRetryTimer();
+		BindRetryPoll.Reset(GetWorld());
 		return;
 	}
 
-	if (!BindRetryTimer.IsValid())
-	{
-		// First miss: arm the fast poll and start counting from zero.
-		BindRetryCount = 0;
-		ArmRetryTimer(AbilitySystemBindRetryInterval);
-		return;
-	}
-
-	// On a client the PlayerState replicates in after the HUD is created, so keep polling
-	// briefly instead of leaving the HUD permanently blank. Past the fast window the poll drops
-	// to one attempt per second; it is never cancelled, so a later possession can still bind.
-	if (++BindRetryCount == FMath::Max(AbilitySystemBindFastRetryCount, 1))
-	{
-		StopRetryTimer();
-		ArmRetryTimer(AbilitySystemBindSlowRetryInterval);
-	}
-}
-
-void UMALHUDWidget::ArmRetryTimer(float Interval)
-{
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	World->GetTimerManager().SetTimer(
-		BindRetryTimer,
-		this,
-		&UMALHUDWidget::TryBindAbilitySystem,
-		FMath::Max(Interval, 0.02f),
-		true);
-}
-
-void UMALHUDWidget::StopRetryTimer()
-{
-	if (BindRetryTimer.IsValid())
-	{
-		if (UWorld* World = GetWorld())
-		{
-			World->GetTimerManager().ClearTimer(BindRetryTimer);
-		}
-		BindRetryTimer.Invalidate();
-	}
+	// On a client the PlayerState replicates in after the HUD is created, so keep polling.
+	// Past the fast window the poll drops to one attempt per second and never stops, so a later
+	// possession can still bind.
+	BindRetryPoll.OnMiss(GetWorld(),
+		FTimerDelegate::CreateUObject(this, &UMALHUDWidget::TryBindAbilitySystem),
+		AbilitySystemBindRetryInterval, AbilitySystemBindFastRetryCount, AbilitySystemBindSlowRetryInterval);
 }
 
 void UMALHUDWidget::NativeDestruct()
 {
-	StopRetryTimer();
+	BindRetryPoll.Reset(GetWorld());
 
 	// Unbind before the widget goes away so the view model cannot push into half-destroyed
 	// widget bindings.
