@@ -221,6 +221,14 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
 	FGameplayTag Input_SkillMenu;
 
+	/** Swaps to the next weapon in the loadout; not an ability input. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
+	FGameplayTag Input_WeaponNext;
+
+	/** Swaps to the previous weapon in the loadout; not an ability input. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
+	FGameplayTag Input_WeaponPrev;
+
 	/** Ability activated - used by ASC for input forwarding routing */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
 	FGameplayTag Input_AbilityActivated;

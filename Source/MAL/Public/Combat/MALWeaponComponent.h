@@ -78,8 +78,23 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "MAL|Combat")
 	void UnequipWeapon();
 
+	/**
+	 * Server only: move Direction steps through the loadout, wrapping at either end.
+	 *
+	 * Done on the authority rather than on the requesting client because EquippedWeapon is a
+	 * replicated value there: a client that computed the next slot from its own copy would read
+	 * the previous weapon while two swaps are in flight and pick the same slot twice.
+	 *
+	 * A no-op when the loadout holds fewer than two weapons.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "MAL|Combat")
+	void CycleWeapon(int32 Direction);
+
 	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
 	UMALWeaponDefinition* GetEquippedWeapon() const { return EquippedWeapon; }
+
+	/** The weapons CycleWeapon walks through, in order. Read-only so the list stays authored. */
+	const TArray<TObjectPtr<UMALWeaponDefinition>>& GetLoadout() const { return Loadout; }
 
 	/** Damage scale of the equipped weapon. 1 while unarmed. */
 	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
@@ -149,9 +164,24 @@ private:
 	/**
 	 * Weapon the character starts with. Applied on the server in BeginPlay, which is also what
 	 * seeds the replicated property for the clients that join later.
+	 *
+	 * Used only when Loadout is empty: a character whose blueprint has the list configured starts
+	 * on its first entry instead, so this stays as the fallback that keeps an unconfigured
+	 * blueprint from starting the player empty-handed.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|Combat")
 	TObjectPtr<UMALWeaponDefinition> StartingWeapon;
+
+	/**
+	 * Weapons the character can cycle through, in wheel order.
+	 *
+	 * This list is the whole inventory for now: there is no pickup or unlock, so whatever is here
+	 * is what the player has from the start. Kept on the component rather than in an asset of its
+	 * own because swapping is this component's job, and the array needs no replication -- every
+	 * machine loads the same blueprint class and reads the same authored list.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|Combat")
+	TArray<TObjectPtr<UMALWeaponDefinition>> Loadout;
 
 	/** Primitive that acts as the weapon hit volume. Must match the character's component name. */
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|Combat")

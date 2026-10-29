@@ -323,6 +323,27 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 			ToggleSkillMenu();
 		}
 	}
+	else if (InputTag == GameplayTags->Input_WeaponNext || InputTag == GameplayTags->Input_WeaponPrev)
+	{
+		// Started only: the repeat rate would otherwise spin through the whole loadout while
+		// the wheel click is held.
+		if (EventType != ETriggerEvent::Started)
+		{
+			return;
+		}
+
+		// A swap rebuilds the ability layer, so letting it through mid-swing would cancel the
+		// montage already playing. A menu is a separate reason: the skill panel builds its rows
+		// once when it opens, so a swap underneath it would leave the previous weapon's tree on
+		// screen while the purchases land under the new one.
+		const bool bDead = MALASC && MALASC->HasMatchingGameplayTag(GameplayTags->Status_Dead);
+		if (bMovementLocked || bMenuOpen || bDead)
+		{
+			return;
+		}
+
+		ServerCycleWeapon(InputTag == GameplayTags->Input_WeaponNext ? 1 : -1);
+	}
 	else
 	{
 		// Buffer input for GAS abilities (Attack, Defend, Dash, etc.)
@@ -528,6 +549,20 @@ void AMALPlayerController::ServerEquipWeapon_Implementation(UMALWeaponDefinition
 		*GetNameSafe(ControlledPawn), Weapon ? *Weapon->GetName() : TEXT("nothing"));
 
 	WeaponComponent->EquipWeapon(Weapon);
+}
+
+void AMALPlayerController::ServerCycleWeapon_Implementation(int32 Direction)
+{
+	APawn* ControlledPawn = GetPawn();
+	UMALWeaponComponent* WeaponComponent =
+		ControlledPawn ? ControlledPawn->FindComponentByClass<UMALWeaponComponent>() : nullptr;
+	if (!WeaponComponent)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ServerCycleWeapon: %s has no weapon component."), *GetNameSafe(ControlledPawn));
+		return;
+	}
+
+	WeaponComponent->CycleWeapon(Direction);
 }
 
 void AMALPlayerController::MALEQUIP(const FString& WeaponAssetPath)

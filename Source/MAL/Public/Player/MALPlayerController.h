@@ -131,6 +131,17 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "MAL|Combat")
 	void ServerEquipWeapon(UMALWeaponDefinition* Weapon);
 
+	/**
+	 * Client -> server: step Direction places through the loadout.
+	 *
+	 * Only the direction crosses the wire, not the resulting weapon: the authority owns the
+	 * equipped slot, and a client picking the next one from its own replicated copy would pick
+	 * the same slot twice while two swaps are in flight. Reliable for the same reason the other
+	 * equip RPC is.
+	 */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "MAL|Combat")
+	void ServerCycleWeapon(int32 Direction);
+
 protected:
 	//~ Begin APlayerController
 	virtual void OnPossess(APawn* InPawn) override;

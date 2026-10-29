@@ -68,8 +68,9 @@ void UMALWeaponComponent::BeginPlay()
 	if (Owner && Owner->HasAuthority())
 	{
 		// Routed through EquipWeapon so the authority takes the same path as a client that
-		// receives the replicated value.
-		EquipWeapon(StartingWeapon);
+		// receives the replicated value. The loadout wins once it is configured; StartingWeapon
+		// stays as the fallback for a blueprint that has no list yet.
+		EquipWeapon(Loadout.Num() > 0 ? Loadout[0].Get() : StartingWeapon.Get());
 	}
 	else
 	{
@@ -147,6 +148,36 @@ void UMALWeaponComponent::ApplyAbilities()
 void UMALWeaponComponent::UnequipWeapon()
 {
 	EquipWeapon(nullptr);
+}
+
+void UMALWeaponComponent::CycleWeapon(int32 Direction)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority())
+	{
+		return;
+	}
+
+	const int32 Count = Loadout.Num();
+	if (Count < 2)
+	{
+		// One weapon is a loadout that never changes, and re-equipping it would only re-apply
+		// the same definition.
+		return;
+	}
+
+	// Empty-handed has no slot, so the first press lands on an end of the list rather than
+	// wrapping from nowhere: forward starts at the first weapon, backward at the last.
+	const int32 Current = EquippedWeapon ? Loadout.IndexOfByKey(EquippedWeapon) : INDEX_NONE;
+	const int32 Step = Direction < 0 ? -1 : 1;
+	const int32 Next = Current == INDEX_NONE
+		? (Step > 0 ? 0 : Count - 1)
+		: (Current + Step + Count) % Count;
+
+	UE_LOG(LogTemp, Log, TEXT("CycleWeapon: %s -> %s (slot %d/%d)."),
+		*GetNameSafe(Owner), *GetNameSafe(Loadout[Next]), Next + 1, Count);
+
+	EquipWeapon(Loadout[Next]);
 }
 
 float UMALWeaponComponent::GetDamageMultiplier() const
