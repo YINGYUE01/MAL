@@ -15,7 +15,7 @@ UMALAbility_Attack::UMALAbility_Attack()
 
 	// Asset tag, activation input and the Status.Attacking it owns while running. The status
 	// tag doubles as an activation blocker, which is what stops two swings overlapping.
-	ConfigureAbility(Tags->Ability_Attack, Tags->Input_Attack, Tags->Status_Attacking);
+	ConfigureAbility(Tags->Ability_Attack, Tags->Input_LMB, Tags->Status_Attacking);
 
 	// The combo component already releases recovery, and it does so in a window-aware way: an
 	// extra release on the melee base would end the ability between two steps.

@@ -36,6 +36,13 @@ void UMALProgressionViewModel::OnAbilitySystemReady(UAbilitySystemComponent* InA
 		UE_MVVM_SET_PROPERTY_VALUE(AttributePoints, FMath::Max(FMath::RoundToInt(Data.NewValue), 0));
 	});
 
+	BindAttribute(UMALProgressionAttributeSet::GetSkillPointsAttribute(), [this](const FOnAttributeChangeData& Data)
+	{
+		// Same contract as the attribute bank. Read here as well as on the skill panel's own view
+		// model, because the HUD has to raise the prompt while the panel is closed.
+		UE_MVVM_SET_PROPERTY_VALUE(SkillPoints, FMath::Max(FMath::RoundToInt(Data.NewValue), 0));
+	});
+
 	// The primaries live on the vitals set, which the same ASC owns. Rounding here keeps the
 	// panel from formatting the same float in five places.
 	BindAttribute(UMALAttributeSet::GetVigorAttribute(), [this](const FOnAttributeChangeData& Data)
@@ -75,6 +82,7 @@ void UMALProgressionViewModel::OnAbilitySystemReleased()
 	UE_MVVM_SET_PROPERTY_VALUE(ExperienceToNextLevel, 0.0f);
 	UE_MVVM_SET_PROPERTY_VALUE(ExperiencePercent, 0.0f);
 	UE_MVVM_SET_PROPERTY_VALUE(AttributePoints, 0);
+	UE_MVVM_SET_PROPERTY_VALUE(SkillPoints, 0);
 	UE_MVVM_SET_PROPERTY_VALUE(Vigor, 0);
 	UE_MVVM_SET_PROPERTY_VALUE(Strength, 0);
 	UE_MVVM_SET_PROPERTY_VALUE(Dexterity, 0);

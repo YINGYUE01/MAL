@@ -10,7 +10,7 @@
  * UMALProgressionViewModel
  *
  * Presentation copy of the character level, the experience banked towards the next one, and the
- * attribute points that are still waiting to be spent.
+ * attribute and skill points that are still waiting to be spent.
  *
  * A view model of its own rather than more properties on UMALStatViewModel: progression comes
  * from a set of its own (UMALProgressionAttributeSet) that only players carry, and the vitals
@@ -46,6 +46,16 @@ public:
 	/** Attribute points earned and not yet spent. A prompt can bind its visibility here. */
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "MAL|UI|Progression")
 	int32 AttributePoints = 0;
+
+	/**
+	 * Skill points earned and not yet spent.
+	 *
+	 * Lives here rather than only on the skill panel's view model: the HUD has to be able to say
+	 * "you have points" while the panel is closed, which is the whole reason the panel ever gets
+	 * opened in the first place.
+	 */
+	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "MAL|UI|Progression")
+	int32 SkillPoints = 0;
 
 	// The primary stats the points go into, rounded for a stat panel to print as-is. They are
 	// write-through copies: a point spent on the authority arrives here through replication.

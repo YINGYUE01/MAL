@@ -169,7 +169,7 @@ public:
 
 	/** Attack input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_Attack;
+	FGameplayTag Input_LMB;
 
 	/** Defend input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")

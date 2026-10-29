@@ -154,12 +154,11 @@ public:
 	/**
 	 * Nodes the player has bought, as skill tags.
 	 *
-	 * Replicated rather than derived from the ASC's granted abilities: a granted spec says an
-	 * ability is *active*, not that it was *earned*, and the starting kit is granted the same
-	 * way. The menu needs the difference to grey out what is still out there.
+	 * Read-only on purpose: the set is only written by UnlockSkill and SetUnlockedSkills, the two
+	 * paths that also charge the points, re-grant the abilities and broadcast. A writable array
+	 * would let a caller own a skill the server never charged for.
 	 */
-	UPROPERTY(ReplicatedUsing = OnRep_UnlockedSkills)
-	TArray<FGameplayTag> UnlockedSkills;
+	const TArray<FGameplayTag>& GetUnlockedSkills() const { return UnlockedSkills; }
 
 	/** Fired on the authority whenever the set changes, so the menu can redraw without polling. */
 	FMALSkillsChangedSignature OnSkillsChanged;
@@ -250,4 +249,14 @@ private:
 	 * primaries cannot be asked, since equipment and effects write the same values.
 	 */
 	TArray<int32> AllocatedPoints;
+
+	/**
+	 * Nodes the player has bought, as skill tags.
+	 *
+	 * Replicated rather than derived from the ASC's granted abilities: a granted spec says an
+	 * ability is *active*, not that it was *earned*, and the starting kit is granted the same
+	 * way. The menu needs the difference to grey out what is still out there.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_UnlockedSkills)
+	TArray<FGameplayTag> UnlockedSkills;
 };

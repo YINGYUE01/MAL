@@ -605,7 +605,7 @@ void AMALCharacterBase::GrantAbilities()
 			{
 				if (const UMALProgressionComponent* Progression = MALPlayerState->GetProgressionComponent())
 				{
-					for (const FGameplayTag& SkillTag : Progression->UnlockedSkills)
+					for (const FGameplayTag& SkillTag : Progression->GetUnlockedSkills())
 					{
 						const FMALSkillNodeDefinition* Node = Tree->FindNode(SkillTag);
 						if (Node && Node->AbilityClass)

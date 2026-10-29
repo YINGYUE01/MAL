@@ -18,6 +18,30 @@
 #include "UI/ViewModel/MALSkillNodeViewModel.h"
 #include "UI/Widgets/MALSkillNodeWidget.h"
 
+namespace
+{
+	/**
+	 * Write one line of the detail column, and drop it out of the layout when there is nothing
+	 * to say.
+	 *
+	 * Almost every node is missing one of these: a node the player can buy has no requirement to
+	 * explain, and an ability carries no description at all. Blanking the text but keeping the
+	 * row leaves a gap that reads as a broken column, so the empty case collapses instead.
+	 */
+	void SetDetailText(UTextBlock* Block, const FText& Text)
+	{
+		if (!Block)
+		{
+			return;
+		}
+
+		Block->SetText(Text);
+		Block->SetVisibility(Text.IsEmpty()
+			? ESlateVisibility::Collapsed
+			: ESlateVisibility::SelfHitTestInvisible);
+	}
+}
+
 UMALSkillMenuWidget::UMALSkillMenuWidget()
 {
 	// Not pausable: enhanced input stops ticking on a paused world, so a panel that paused would
@@ -223,25 +247,10 @@ void UMALSkillMenuWidget::RefreshDetails()
 		SkillPointsText->SetText(FText::AsNumber(MenuViewModel ? MenuViewModel->SkillPoints : 0));
 	}
 
-	if (SelectedNameText)
-	{
-		SelectedNameText->SetText(bHasNode ? Node->DisplayName : FText::GetEmpty());
-	}
-
-	if (SelectedDescriptionText)
-	{
-		SelectedDescriptionText->SetText(bHasNode ? Node->Description : FText::GetEmpty());
-	}
-
-	if (SelectedStateText)
-	{
-		SelectedStateText->SetText(bHasNode ? Node->StateText : FText::GetEmpty());
-	}
-
-	if (SelectedRequirementText)
-	{
-		SelectedRequirementText->SetText(bHasNode ? Node->RequirementText : FText::GetEmpty());
-	}
+	SetDetailText(SelectedNameText, bHasNode ? Node->DisplayName : FText::GetEmpty());
+	SetDetailText(SelectedDescriptionText, bHasNode ? Node->Description : FText::GetEmpty());
+	SetDetailText(SelectedStateText, bHasNode ? Node->StateText : FText::GetEmpty());
+	SetDetailText(SelectedRequirementText, bHasNode ? Node->RequirementText : FText::GetEmpty());
 
 	if (SelectedIconImage)
 	{

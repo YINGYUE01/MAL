@@ -95,6 +95,16 @@ struct FMALSkillNodeDefinition
 };
 
 /**
+ * Name to show for a node, taken from the first source that has one: the node itself, the
+ * ability's class default object, then the tag's last segment.
+ *
+ * Shared rather than duplicated: the menu prints it as a row's title and the progression
+ * component prints the same text inside "Requires ...", so the two must not disagree about
+ * what a node is called.
+ */
+MAL_API FText MALGetSkillNodeDisplayName(const FMALSkillNodeDefinition& Node);
+
+/**
  * UMALSkillTreeDefinition
  *
  * The full skill pool of one class: every node the menu draws, owned or not.

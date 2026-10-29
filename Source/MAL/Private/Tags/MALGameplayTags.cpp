@@ -62,7 +62,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	Input_Move = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Move")), TEXT("Move input"));
 	Input_Look = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Look")), TEXT("Look input"));
 	Input_Jump = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Jump")), TEXT("Jump input"));
-	Input_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Attack")), TEXT("Attack input"));
+	Input_LMB = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.LMB")), TEXT("LMB input"));
 	Input_Defend = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Defend")), TEXT("Defend input"));
 	Input_Dash = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Dash")), TEXT("Dash input"));
 	Input_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Buff")), TEXT("Buff input"));

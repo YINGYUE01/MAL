@@ -56,8 +56,11 @@ void UMALSkillNodeWidget::RefreshFromNodeViewModel()
 	if (CostText)
 	{
 		// Number only: whether it reads "3", "3 pts" or "3 points" is a design decision, so the
-		// unit lives in the blueprint around this block rather than in the number itself.
-		CostText->SetText(bHasModel ? FText::AsNumber(NodeViewModel->Cost) : FText::GetEmpty());
+		// unit lives in the blueprint around this block rather than in the number itself. A node
+		// that costs nothing prints no number at all, because a "0" reads as a price rather than
+		// as "free".
+		const bool bHasCost = bHasModel && NodeViewModel->Cost > 0;
+		CostText->SetText(bHasCost ? FText::AsNumber(NodeViewModel->Cost) : FText::GetEmpty());
 	}
 
 	if (StateText)

@@ -506,7 +506,16 @@ EMALSkillNodeState UMALProgressionComponent::EvaluateSkillState(FGameplayTag Ski
 	{
 		if (Prerequisite.IsValid() && !IsSkillUnlocked(Prerequisite))
 		{
-			OutReason = NSLOCTEXT("MALSkill", "PrerequisiteMissing", "A prerequisite skill is still locked.");
+			// Named rather than "a prerequisite": the panel has one line for this, and the
+			// player needs to know which node to buy next. Resolved through the same lookup the
+			// row titles use, so the reason and the row never call one node two things.
+			const FMALSkillNodeDefinition* PrerequisiteNode = Tree->FindNode(Prerequisite);
+
+			OutReason = FText::Format(
+				NSLOCTEXT("MALSkill", "PrerequisiteMissing", "Requires {0}."),
+				PrerequisiteNode
+					? MALGetSkillNodeDisplayName(*PrerequisiteNode)
+					: FText::FromString(Prerequisite.ToString()));
 			return EMALSkillNodeState::Locked;
 		}
 	}

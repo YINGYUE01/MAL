@@ -14,43 +14,22 @@ void UMALSkillNodeViewModel::Initialize(const FMALSkillNodeDefinition& InNode)
 	UE_MVVM_SET_PROPERTY_VALUE(RequiredLevel, FMath::Max(InNode.RequiredLevel, 1));
 	Tier = InNode.Tier;
 
-	FText NodeName = InNode.DisplayName;
-	FText NodeDescription = InNode.Description;
 	TObjectPtr<UTexture2D> NodeIcon = InNode.Icon.IsNull() ? nullptr : InNode.Icon.LoadSynchronous();
 
-	// The class default object is the only other source: an ungranted ability has no spec, so
-	// the node's own fields are all a locked row has to draw with.
-	const UMALGameplayAbility* AbilityDefaults = InNode.AbilityClass
-		? Cast<UMALGameplayAbility>(InNode.AbilityClass->GetDefaultObject())
-		: nullptr;
-	if (AbilityDefaults)
+	// Only the icon still resolves here: the name's three-step lookup lives in
+	// MALGetSkillNodeDisplayName, which the progression component also prints in its reasons.
+	// The class default object is the only other icon source: an ungranted ability has no spec,
+	// so the node's own fields are all a locked row has to draw with.
+	if (!NodeIcon && InNode.AbilityClass)
 	{
-		if (NodeName.IsEmpty())
-		{
-			NodeName = AbilityDefaults->DisplayName;
-		}
-
-		if (!NodeIcon)
+		if (const UMALGameplayAbility* AbilityDefaults = Cast<UMALGameplayAbility>(InNode.AbilityClass->GetDefaultObject()))
 		{
 			NodeIcon = AbilityDefaults->Icon;
 		}
 	}
 
-	// Still empty past both sources: name the tag rather than leave a blank row. A skill tag is
-	// always "MAL.Skill.Something", so the trailing segment reads as a name.
-	if (NodeName.IsEmpty())
-	{
-		FString TagString = InNode.SkillTag.ToString();
-		int32 LastDot = INDEX_NONE;
-		if (TagString.FindLastChar(TEXT('.'), LastDot))
-		{
-			TagString.RightChopInline(LastDot + 1);
-		}
-		NodeName = FText::FromString(TagString);
-	}
-
-	UE_MVVM_SET_PROPERTY_VALUE(DisplayName, NodeName);
-	UE_MVVM_SET_PROPERTY_VALUE(Description, NodeDescription);
+	UE_MVVM_SET_PROPERTY_VALUE(DisplayName, MALGetSkillNodeDisplayName(InNode));
+	UE_MVVM_SET_PROPERTY_VALUE(Description, InNode.Description);
 	UE_MVVM_SET_PROPERTY_VALUE(Icon, NodeIcon);
 
 	// A fresh node starts locked with no explanation; the menu pushes the real state as soon as

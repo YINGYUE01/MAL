@@ -19,6 +19,7 @@
 #include "UI/Framework/MALDamageNumberSubsystem.h"
 #include "UI/Framework/MALUISubsystem.h"
 #include "UI/Widgets/MALAttributeMenuWidget.h"
+#include "UI/Widgets/MALSkillMenuWidget.h"
 
 AMALPlayerController::AMALPlayerController()
 {
@@ -140,6 +141,8 @@ void AMALPlayerController::ToggleAttributeMenu()
 
 void AMALPlayerController::ToggleSkillMenu()
 {
+	UE_LOG(LogTemp, Log, TEXT("MALInput: ToggleSkillMenu class=%s"), SkillMenuClass ? *SkillMenuClass->GetName() : TEXT("None"));
+
 	if (!IsLocalController())
 	{
 		return;
@@ -151,11 +154,12 @@ void AMALPlayerController::ToggleSkillMenu()
 		return;
 	}
 
-	// Matched against the configured class rather than a concrete widget type: the panel is a
-	// blueprint child, and this key is only ever meant to close this key's panel.
+	// Same rule as the attribute key: only this panel's own key closes it. Matched against the
+	// C++ type rather than the configured class, so swapping the blueprint cannot leave an open
+	// panel that this key no longer recognises.
 	if (const UMALMenuWidget* TopMenu = UISubsystem->GetTopMenu())
 	{
-		if (SkillMenuClass && TopMenu->IsA(SkillMenuClass))
+		if (TopMenu->IsA<UMALSkillMenuWidget>())
 		{
 			UISubsystem->PopMenu();
 			return;
@@ -164,7 +168,8 @@ void AMALPlayerController::ToggleSkillMenu()
 
 	if (SkillMenuClass)
 	{
-		UISubsystem->PushMenu(SkillMenuClass);
+		UMALMenuWidget* Pushed = UISubsystem->PushMenu(SkillMenuClass);
+		UE_LOG(LogTemp, Log, TEXT("MALInput: pushed %s"), *GetNameSafe(Pushed));
 	}
 }
 

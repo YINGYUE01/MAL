@@ -52,7 +52,7 @@ bool UMALSaveSubsystem::SaveForPlayer(AMALPlayerState* PlayerState)
 	Save->Experience = FMath::Max(FMath::RoundToInt(ProgressionSet->GetExperience()), 0);
 	Save->AttributePoints = Progression->GetAttributePoints();
 	Save->SkillPoints = Progression->GetSkillPoints();
-	Save->UnlockedSkills = Progression->UnlockedSkills;
+	Save->UnlockedSkills = Progression->GetUnlockedSkills();
 	Save->AllocatedPoints = Progression->GetAllocatedPointsArray();
 
 	const bool bSaved = UGameplayStatics::SaveGameToSlot(Save, SlotName, UserIndex);
