@@ -82,6 +82,36 @@ public:
 	FGameplayTag Event_WeaponHit;
 
 	// -----------------------------------------------------------------------------
+	// Weapon Tags - What kind of weapon is equipped
+	// -----------------------------------------------------------------------------
+
+	/**
+	 * Weapon families.
+	 *
+	 * A UMALWeaponDefinition names one of these, and a skill node names the one it needs, so the
+	 * menu and the grant code can ask "is the right kind of weapon in hand" without holding a
+	 * reference to an asset. Matching is hierarchical: MAL.Weapon.Sword covers a rapier tagged
+	 * MAL.Weapon.Sword.Rapier.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Weapon")
+	FGameplayTag Weapon_Sword;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Weapon")
+	FGameplayTag Weapon_Axe;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Weapon")
+	FGameplayTag Weapon_Dagger;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Weapon")
+	FGameplayTag Weapon_Hammer;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Weapon")
+	FGameplayTag Weapon_Scythe;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Weapon")
+	FGameplayTag Weapon_Spear;
+
+	// -----------------------------------------------------------------------------
 	// Data Tags - Represent data/attribute types
 	// -----------------------------------------------------------------------------
 	

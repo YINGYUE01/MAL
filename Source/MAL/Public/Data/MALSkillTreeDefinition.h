@@ -77,6 +77,19 @@ struct FMALSkillNodeDefinition
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill")
 	FGameplayTag InputTag;
 
+	/**
+	 * Weapon the player has to be holding for this node to be buyable and granted.
+	 *
+	 * Empty is a general skill: always buyable, always granted, regardless of what is in hand.
+	 * Set, the node is gated on the equipped weapon's own WeaponTag, matched by hierarchy.
+	 *
+	 * Ownership and availability are deliberately separate. Buying the node writes its tag into
+	 * the player's unlocked set for good; swapping to another weapon only takes the ability back
+	 * for as long as that weapon is equipped.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill")
+	FGameplayTag RequiredWeaponTag;
+
 	/** Character level needed before the node can be bought. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill", meta = (ClampMin = "1"))
 	int32 RequiredLevel = 1;

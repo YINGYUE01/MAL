@@ -140,6 +140,18 @@ public:
 	 */
 	void RefreshGrantedAbilities();
 
+	/**
+	 * Server only: rebuild the abilities the equipped weapon brings.
+	 *
+	 * One entry point shared by equip, unequip, skill purchase and respawn, and safe to call
+	 * any number of times: it withdraws the weapon layer first and grants it back from whatever
+	 * is equipped now. The layer lives under its own source key, so a skill purchase that
+	 * rebuilds the character's kit cannot take a weapon's abilities with it.
+	 *
+	 * Does nothing when no ability system is ready yet; GrantAbilities calls back in once one is.
+	 */
+	void RefreshWeaponGrantedAbilities();
+
 	/** True on the server and on every client once health reached zero. */
 	UFUNCTION(BlueprintPure, Category = "MAL|Death")
 	bool IsDead() const { return bIsDead; }

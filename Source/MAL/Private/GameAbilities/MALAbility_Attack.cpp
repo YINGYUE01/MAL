@@ -6,6 +6,8 @@
 #include "Animation/AnimMontage.h"
 #include "Character/MALCharacterBase.h"
 #include "Combat/MALComboComponent.h"
+#include "Combat/MALWeaponComponent.h"
+#include "Combat/MALWeaponDefinition.h"
 #include "GameplayTagContainer.h"
 #include "Tags/MALGameplayTags.h"
 
@@ -45,7 +47,18 @@ void UMALAbility_Attack::ActivateAbility(
 		// The montage section is the only value both sides agree on, so let the state machine
 		// chain from it instead of from its own cached step.
 		ComboComponent->MontageStepQuery.BindUObject(this, &UMALAbility_Attack::GetCurrentComboStepFromMontage);
-		ComboComponent->BeginCombo(ComboSections, ComboInputBufferWindow, RecoveryReleaseDelay);
+
+		// The equipped weapon's list when it authored one: the montage about to play is the
+		// weapon's, so only its section names resolve.
+		const TArray<FName>& Sections = ResolveComboSections();
+		if (Sections.Num() < 2)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("UMALAbility_Attack %s: %d combo section(s) on %s; a chain needs at least 2, so every extra attack press will be a no-op."),
+				*GetName(), Sections.Num(), *GetNameSafe(GetAvatarActorFromActorInfo()));
+		}
+
+		ComboComponent->BeginCombo(Sections, ComboInputBufferWindow, RecoveryReleaseDelay);
 	}
 
 	// Commit, bind the weapon window, and play the montage -- all in the melee base.
@@ -74,7 +87,29 @@ void UMALAbility_Attack::EndAbility(
 
 FName UMALAbility_Attack::GetMontageStartSection() const
 {
-	return ComboSections.IsValidIndex(0) ? ComboSections[0] : NAME_None;
+	const TArray<FName>& Sections = ResolveComboSections();
+	return Sections.IsValidIndex(0) ? Sections[0] : NAME_None;
+}
+
+const TArray<FName>& UMALAbility_Attack::ResolveComboSections() const
+{
+	// The weapon wins when it names sections of its own, because it is also the one supplying
+	// the montage those names are read against.
+	if (const AMALCharacterBase* Character = Cast<AMALCharacterBase>(GetAvatarActorFromActorInfo()))
+	{
+		if (const UMALWeaponComponent* WeaponComponent = Character->GetWeaponComponent())
+		{
+			if (const UMALWeaponDefinition* Weapon = WeaponComponent->GetEquippedWeapon())
+			{
+				if (Weapon->ComboSections.Num() > 0)
+				{
+					return Weapon->ComboSections;
+				}
+			}
+		}
+	}
+
+	return ComboSections;
 }
 
 int32 UMALAbility_Attack::GetHitComboStep() const
@@ -158,7 +193,7 @@ int32 UMALAbility_Attack::GetCurrentComboStepFromMontage() const
 	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
 	{
 		const FName Section = ASC->GetCurrentMontageSectionName();
-		const int32 Index = ComboSections.IndexOfByKey(Section);
+		const int32 Index = ResolveComboSections().IndexOfByKey(Section);
 		if (Index != INDEX_NONE)
 		{
 			return Index;

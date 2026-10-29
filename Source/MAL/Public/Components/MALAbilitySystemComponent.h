@@ -19,6 +19,15 @@ class MAL_API UMALAbilitySystemComponent : public UAbilitySystemComponent
 public:
 	UMALAbilitySystemComponent();
 
+	/**
+	 * Source key the equipped weapon files its abilities under.
+	 *
+	 * One key for every weapon rather than one per definition: a character holds one weapon at a
+	 * time, so a swap clears this key and re-grants into it. Everything the character owns itself
+	 * -- class sets, bought skills -- stays under NAME_None and is untouched by a swap.
+	 */
+	static const FName WeaponAbilitySourceKey;
+
 	virtual void InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor) override;
 
 	/**

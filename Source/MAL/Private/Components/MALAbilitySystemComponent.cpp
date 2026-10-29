@@ -6,6 +6,8 @@
 #include "AbilitySystem/MALGameplayEffectContext.h"
 #include "GameplayTagContainer.h"
 
+const FName UMALAbilitySystemComponent::WeaponAbilitySourceKey(TEXT("Weapon"));
+
 UMALAbilitySystemComponent::UMALAbilitySystemComponent()
 {
 }

@@ -5,6 +5,7 @@
 #include "Combat/MALCombatEvents.h"
 #include "Combat/MALCombatEventsSubsystem.h"
 #include "Combat/MALWeaponComponent.h"
+#include "Combat/MALWeaponDefinition.h"
 #include "Combat/MALComboComponent.h"
 #include "Components/MALAbilitySystemComponent.h"
 #include "Components/MALProgressionComponent.h"
@@ -582,6 +583,16 @@ void AMALCharacterBase::GrantAbilities()
 	MALASC->ClearGrantedAbilities();
 
 	const UMALClassDefinition* Definition = GetClassDefinition();
+	const UMALSkillTreeDefinition* Tree = Definition ? Definition->SkillTree : nullptr;
+
+	// Whatever the player has bought. Null for enemies, which have no player state and so no
+	// progression; their kit is the ability sets alone.
+	const UMALProgressionComponent* Progression = nullptr;
+	if (const AMALPlayerState* MALPlayerState = GetPlayerState<AMALPlayerState>())
+	{
+		Progression = MALPlayerState->GetProgressionComponent();
+	}
+
 	if (!Definition)
 	{
 		UE_LOG(LogTemp, Warning,
@@ -601,28 +612,106 @@ void AMALCharacterBase::GrantAbilities()
 		// The earned half of the kit. The ability sets above are handed out on possession; these
 		// are only granted once the player has bought them, which is why the tree has to be read
 		// here and not in the menu.
-		if (const UMALSkillTreeDefinition* Tree = Definition->SkillTree)
+		if (Tree && Progression)
 		{
-			if (const AMALPlayerState* MALPlayerState = GetPlayerState<AMALPlayerState>())
+			for (const FGameplayTag& SkillTag : Progression->GetUnlockedSkills())
 			{
-				if (const UMALProgressionComponent* Progression = MALPlayerState->GetProgressionComponent())
+				const FMALSkillNodeDefinition* Node = Tree->FindNode(SkillTag);
+				if (!Node || !Node->AbilityClass)
 				{
-					for (const FGameplayTag& SkillTag : Progression->GetUnlockedSkills())
-					{
-						const FMALSkillNodeDefinition* Node = Tree->FindNode(SkillTag);
-						if (Node && Node->AbilityClass)
-						{
-							MALASC->GrantAbility(Node->AbilityClass, Node->InputTag);
-						}
-					}
+					continue;
 				}
+
+				// Weapon-gated nodes belong to the weapon layer below. Granting them here as well
+				// would put two specs on the same input tag.
+				if (Node->RequiredWeaponTag.IsValid())
+				{
+					continue;
+				}
+
+				MALASC->GrantAbility(Node->AbilityClass, Node->InputTag);
 			}
 		}
 	}
 
 	bAbilitiesGranted = true;
 
+	// The weapon layer is rebuilt from the same entry point: it depends on data gathered here
+	// (the tree, the unlocked set) and must run even when the class definition is missing.
+	RefreshWeaponGrantedAbilities();
+
 	UE_LOG(LogTemp, Verbose, TEXT("MALCharacterBase::GrantAbilities %s: done"), *GetName());
+}
+
+void AMALCharacterBase::RefreshWeaponGrantedAbilities()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	UMALAbilitySystemComponent* MALASC = GetMALAbilitySystemComponent();
+	if (!MALASC)
+	{
+		// Normal on the first equip: the component's BeginPlay can run before possession has
+		// initialized the ability system. GrantAbilities calls back in once it has.
+		return;
+	}
+
+	// Clear before granting, never the other way round. Granting first would leave two specs
+	// answering the same input tag for as long as this function runs, and the input buffer
+	// takes both handles -- the fight then decides which one activates.
+	MALASC->ClearGrantedAbilities(UMALAbilitySystemComponent::WeaponAbilitySourceKey);
+
+	const UMALWeaponDefinition* Weapon = WeaponComponent ? WeaponComponent->GetEquippedWeapon() : nullptr;
+	if (!Weapon)
+	{
+		// Unarmed: the clear above was the whole job.
+		return;
+	}
+
+	for (const TObjectPtr<UMALAbilitySet>& AbilitySet : Weapon->GrantedAbilitySets)
+	{
+		if (AbilitySet)
+		{
+			MALASC->GrantAbilitySet(AbilitySet, UMALAbilitySystemComponent::WeaponAbilitySourceKey);
+		}
+	}
+
+	// Bought skills that ask for this weapon. They stay in the unlocked set when the weapon goes
+	// away -- ownership does not change with what is in hand, only what is granted does.
+	if (!Weapon->WeaponTag.IsValid())
+	{
+		return;
+	}
+
+	const UMALClassDefinition* Definition = GetClassDefinition();
+	const UMALSkillTreeDefinition* Tree = Definition ? Definition->SkillTree : nullptr;
+	const AMALPlayerState* MALPlayerState = GetPlayerState<AMALPlayerState>();
+	const UMALProgressionComponent* Progression = MALPlayerState ? MALPlayerState->GetProgressionComponent() : nullptr;
+	if (!Tree || !Progression)
+	{
+		return;
+	}
+
+	for (const FGameplayTag& SkillTag : Progression->GetUnlockedSkills())
+	{
+		const FMALSkillNodeDefinition* Node = Tree->FindNode(SkillTag);
+		if (!Node || !Node->AbilityClass || !Node->RequiredWeaponTag.IsValid())
+		{
+			continue;
+		}
+
+		// Weapon side of the match: a rapier tagged MAL.Weapon.Sword.Rapier satisfies a node
+		// tagged MAL.Weapon.Sword, so a family of blades can share one skill.
+		if (!Weapon->WeaponTag.MatchesTag(Node->RequiredWeaponTag))
+		{
+			continue;
+		}
+
+		MALASC->GrantAbility(Node->AbilityClass, Node->InputTag, 1,
+			UMALAbilitySystemComponent::WeaponAbilitySourceKey);
+	}
 }
 
 void AMALCharacterBase::RefreshGrantedAbilities()

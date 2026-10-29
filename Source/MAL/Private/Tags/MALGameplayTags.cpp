@@ -38,6 +38,14 @@ void UMALGameplayTags::InitializeNativeTags()
 	Event_ShieldBreak = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.ShieldBreak")), TEXT("Entity's shield was broken"));
 	Event_WeaponHit = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.WeaponHit")), TEXT("Weapon collision detected a hit"));
 
+	// Weapon Tags
+	Weapon_Sword = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Sword")), TEXT("One-handed blade family"));
+	Weapon_Axe = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Axe")), TEXT("Axe family"));
+	Weapon_Dagger = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Dagger")), TEXT("Dagger family"));
+	Weapon_Hammer = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Hammer")), TEXT("Hammer family"));
+	Weapon_Scythe = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Scythe")), TEXT("Scythe family"));
+	Weapon_Spear = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Spear")), TEXT("Spear family"));
+
 	// Data Tags
 	Data_Health = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Data.Health")), TEXT("Health attribute"));
 	Data_Shield = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Data.Shield")), TEXT("Shield attribute"));

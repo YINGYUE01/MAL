@@ -18,6 +18,12 @@ class UMALWeaponDefinition;
 DECLARE_MULTICAST_DELEGATE_OneParam(FMALWeaponHitSignature, const FMALHitResult&);
 
 /**
+ * Broadcast when an equip finishes: on the authority from EquipWeapon, on clients from the
+ * replicated OnRep. Carries nothing because the listener re-reads GetEquippedWeapon().
+ */
+DECLARE_MULTICAST_DELEGATE(FMALWeaponChangedSignature);
+
+/**
  * UMALWeaponComponent
  *
  * Owns the melee hit window for a character: resolves the weapon collision primitive,
@@ -86,6 +92,18 @@ public:
 	/** Fired on the authority for each target hit during the current window. */
 	FMALWeaponHitSignature OnWeaponHit;
 
+	/**
+	 * Fired once per equip, on the authority and on every client.
+	 *
+	 * A swap changes which abilities the character holds, and the ability bar resolves its slots
+	 * from those specs. The bar has nothing else to watch -- specs replicate silently -- so this
+	 * is the signal it listens to.
+	 *
+	 * Fires after the visuals and the hit box are applied, so a listener that reads the equipped
+	 * definition sees the finished state.
+	 */
+	FMALWeaponChangedSignature OnEquippedWeaponChanged;
+
 protected:
 	//~ Begin UActorComponent
 	virtual void BeginPlay() override;
@@ -102,6 +120,14 @@ protected:
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 private:
+	/**
+	 * Hand the equipped definition to the character so it can rebuild the weapon's abilities.
+	 *
+	 * Authority only, and a no-op when the owner is not a character: this component only reports
+	 * what is equipped, the ability system belongs to someone else.
+	 */
+	void ApplyAbilities();
+
 	/** Find the primitive with the given name on the owning actor. */
 	UPrimitiveComponent* FindCollisionComponent(FName ComponentName) const;
 

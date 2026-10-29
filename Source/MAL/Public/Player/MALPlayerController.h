@@ -19,6 +19,8 @@
 class UMALInputConfig;
 class UInputMappingContext;
 class UMALHitFeedbackComponent;
+class UMALWeaponComponent;
+class UMALWeaponDefinition;
 
 UCLASS()
 class MAL_API AMALPlayerController : public APlayerController
@@ -91,6 +93,15 @@ public:
 	void MALSpendAttributePoint(const FString& StatName, int32 Count = 1);
 
 	/**
+	 * Debug: equip a weapon by asset path, or unequip with an empty path.
+	 *
+	 * There is no pickup or inventory yet, so this is what makes the weapon ability layer
+	 * reachable from a PIE console. Goes through the same server RPC a real equip would.
+	 */
+	UFUNCTION(Exec)
+	void MALEQUIP(const FString& WeaponAssetPath);
+
+	/**
 	 * Client -> server: put Count banked points into a primary stat.
 	 *
 	 * The attribute panel lives on the client but the primaries are only writable on the
@@ -109,7 +120,23 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "MAL|Skill")
 	void ServerUnlockSkill(FGameplayTag SkillTag);
 
+	/**
+	 * Client -> server: equip Weapon, or unequip when it is null.
+	 *
+	 * EquipWeapon refuses to run anywhere but the authority, and the decision to swap belongs to
+	 * the player, so a weapon picked in a client-side UI has to cross the wire. Reliable for the
+	 * same reason the other two are: a dropped swap leaves the client drawing a weapon the server
+	 * never gave it, along with abilities to match.
+	 */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "MAL|Combat")
+	void ServerEquipWeapon(UMALWeaponDefinition* Weapon);
+
 protected:
+	//~ Begin APlayerController
+	virtual void OnPossess(APawn* InPawn) override;
+	virtual void AcknowledgePossession(APawn* InPawn) override;
+	//~ End APlayerController
+
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
 	virtual void PostProcessInput(const float DeltaTime, const bool bGamePaused) override;
@@ -147,6 +174,23 @@ protected:
 	TSubclassOf<UMALDamageNumberWidget> DamageNumberWidgetClass;
 
 private:
+	/** Watch this pawn's weapon component for equips; drops whatever was watched before. */
+	void BindToWeaponComponent();
+
+	/** Detach from the component last handed to BindToWeaponComponent. */
+	void UnbindWeaponComponent();
+
+	/** Re-resolve the ability bar from the specs the character holds right now. */
+	void RefreshAbilityBar();
+
+	/** Weapon component callback: a swap landed, so the bar's contents may have changed. */
+	void HandleEquippedWeaponChanged();
+
+	/** The component BindToWeaponComponent is listening to. Weak: the pawn can die under us. */
+	TWeakObjectPtr<UMALWeaponComponent> BoundWeaponComponent;
+
+	FDelegateHandle WeaponChangedDelegateHandle;
+
 	/** Local hit-stop driver for confirmed hits (camera shake stays on the controller). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Combat", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UMALHitFeedbackComponent> HitFeedbackComponent;

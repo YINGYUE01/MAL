@@ -51,6 +51,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Combo")
 	TArray<FName> ComboSections;
 
+	/**
+	 * Section names that actually apply right now: the equipped weapon's when it authored any,
+	 * otherwise this ability's own.
+	 *
+	 * Both every use of the list and the fallback live behind this one call, because a section
+	 * name is only valid for the montage that defines it. Reading the ability's list while the
+	 * weapon's montage plays jumps to a section the montage does not have, and the engine ignores
+	 * that without a word.
+	 */
+	const TArray<FName>& ResolveComboSections() const;
+
 	/** How long (seconds) an early combo press stays buffered before it is discarded. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Attack|Combo", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float ComboInputBufferWindow = 0.25f;

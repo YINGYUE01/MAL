@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "GameplayTagContainer.h"
 #include "MALWeaponDefinition.generated.h"
 
 class UStaticMesh;
@@ -11,6 +12,7 @@ class USkeletalMesh;
 class UAnimInstance;
 class UNiagaraSystem;
 class UAnimMontage;
+class UMALAbilitySet;
 
 /**
  * UMALWeaponDefinition
@@ -33,6 +35,18 @@ public:
 	/** Shown in UI and in logs. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon")
 	FText DisplayName;
+
+	/**
+	 * What kind of weapon this is: MAL.Weapon.Sword, MAL.Weapon.Axe, and so on.
+	 *
+	 * Skill tree nodes name a weapon with the same tag family, which is how a node knows it
+	 * belongs to this weapon. Matching is by hierarchy, so a node tagged MAL.Weapon.Sword also
+	 * answers a rapier tagged MAL.Weapon.Sword.Rapier.
+	 *
+	 * Empty means the weapon contributes only its GrantedAbilitySets and gates no skill nodes.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon")
+	FGameplayTag WeaponTag;
 
 	// --- Visuals ---
 
@@ -140,6 +154,34 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Animation")
 	TObjectPtr<UAnimMontage> AttackMontage;
+
+	/**
+	 * Combo section names in the order they chain, e.g. Combo1..Combo4. Index 0 is the entry.
+	 *
+	 * Section names only mean something inside one montage, so they belong to whoever owns the
+	 * montage. Left here rather than on the ability: a sword and an axe can share one swing
+	 * ability, and reading the sword's section names against the axe's montage jumps to a name
+	 * that does not exist -- which fails silently and reads as "the second hit never comes out".
+	 *
+	 * Empty falls back to the ability's own list, which is what a reskin of the same blade wants.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Animation")
+	TArray<FName> ComboSections;
+
+	// --- Abilities ---
+
+	/**
+	 * Abilities this weapon hands out while it is equipped.
+	 *
+	 * Granted on equip and taken back on unequip, under a source key of their own, so a skill
+	 * purchase that rebuilds the character's kit leaves them alone. This is where a weapon puts
+	 * its own swing: the same MAL.Input.LMB tag, a different ability per weapon.
+	 *
+	 * Two weapons equipped at once is not a state this models: the layer is rebuilt from the one
+	 * equipped definition, so a swap replaces rather than stacks.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Ability")
+	TArray<TObjectPtr<UMALAbilitySet>> GrantedAbilitySets;
 
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 };

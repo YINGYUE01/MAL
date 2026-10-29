@@ -21,10 +21,9 @@ class UMALSkillNodeWidget;
  * The skill panel: the whole class pool down the left, the selected node's detail on the right.
  *
  * Rows are created at runtime from NodeWidgetClass, one per node of the player's tree, and the
- * list arrives already sorted by tier, so a new band begins wherever the tier changes. The band
- * heading itself is left to the blueprint -- CreateTierHeader returns whatever widget should
- * sit above the band, including nothing -- because what a heading looks like is not something
- * C++ can decide.
+ * list arrives already sorted by tier, so a new band begins wherever the tier changes. A band
+ * heading comes from CreateTierHeader, which the blueprint can override; C++ falls back to a
+ * plain tier label so that a tree without a hand-built heading still reads as bands.
  *
  * The panel is built when it is shown rather than when the HUD starts, so it reads the player
  * state once, at a point where the player state is guaranteed to exist. Every later change
@@ -106,11 +105,12 @@ protected:
 	//~ End UUserWidget
 
 	/**
-	 * Build the heading that opens a tier band, or return null to draw the band without one.
+	 * Build the heading that opens a tier band. Defaults to a plain label carrying the tier.
 	 *
 	 * A blueprint event rather than a widget class property: a heading is a label, a divider, a
 	 * frame or nothing at all depending on the design, and none of those accept a title through
-	 * a common interface.
+	 * a common interface. The default exists so an unconfigured blueprint still separates bands;
+	 * returning null from an override draws the band without a heading.
 	 */
 	UFUNCTION(BlueprintNativeEvent, Category = "MAL|UI|Skill", meta = (DisplayName = "Create Tier Header"))
 	UWidget* CreateTierHeader(int32 Tier);

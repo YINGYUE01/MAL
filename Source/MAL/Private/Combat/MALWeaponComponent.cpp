@@ -93,6 +93,10 @@ void UMALWeaponComponent::OnRep_EquippedWeapon()
 	// and hit volume. Hit detection is deliberately not in this path: it stays on the authority.
 	ApplyVisuals();
 	ApplyHitBox();
+
+	// The abilities themselves were granted on the server and replicate on their own; this is
+	// only the cue for listeners that resolve them again.
+	OnEquippedWeaponChanged.Broadcast();
 }
 
 void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
@@ -112,6 +116,8 @@ void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
 		// Handing over the same asset is still a request to re-apply its setup.
 		ApplyVisuals();
 		ApplyHitBox();
+		ApplyAbilities();
+		OnEquippedWeaponChanged.Broadcast();
 		return;
 	}
 
@@ -120,6 +126,22 @@ void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
 	// OnRep only runs on clients, so the authority applies the swap by hand.
 	ApplyVisuals();
 	ApplyHitBox();
+
+	// After the definition has landed: the ability layer reads the equipped weapon, so handing
+	// it over before the assignment would rebuild from the previous one.
+	ApplyAbilities();
+	OnEquippedWeaponChanged.Broadcast();
+}
+
+void UMALWeaponComponent::ApplyAbilities()
+{
+	// Delegated to the character: the ability system can outlive this component (it lives on the
+	// player state) and is not always ready when BeginPlay equips the starting weapon, so the
+	// grant has to be owned by whoever also grants the class kit and can retry.
+	if (AMALCharacterBase* Character = Cast<AMALCharacterBase>(GetOwner()))
+	{
+		Character->RefreshWeaponGrantedAbilities();
+	}
 }
 
 void UMALWeaponComponent::UnequipWeapon()

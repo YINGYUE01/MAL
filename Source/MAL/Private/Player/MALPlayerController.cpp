@@ -2,6 +2,8 @@
 
 #include "Player/MALPlayerController.h"
 #include "Combat/MALHitFeedbackComponent.h"
+#include "Combat/MALWeaponComponent.h"
+#include "Combat/MALWeaponDefinition.h"
 #include "Input/MALInputConfig.h"
 #include "Input/MALInputComponent.h"
 #include "InputAction.h"
@@ -20,6 +22,9 @@
 #include "UI/Framework/MALUISubsystem.h"
 #include "UI/Widgets/MALAttributeMenuWidget.h"
 #include "UI/Widgets/MALSkillMenuWidget.h"
+#include "UI/ViewModel/MALAbilityBarViewModel.h"
+#include "Engine/World.h"
+#include "TimerManager.h"
 
 AMALPlayerController::AMALPlayerController()
 {
@@ -438,4 +443,107 @@ void AMALPlayerController::ServerUnlockSkill_Implementation(FGameplayTag SkillTa
 	{
 		UE_LOG(LogTemp, Warning, TEXT("ServerUnlockSkill: %s failed after passing its checks."), *SkillTag.ToString());
 	}
+}
+
+void AMALPlayerController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+
+	// The server side of possession. A client gets here through AcknowledgePossession instead.
+	BindToWeaponComponent();
+}
+
+void AMALPlayerController::AcknowledgePossession(APawn* InPawn)
+{
+	Super::AcknowledgePossession(InPawn);
+
+	// The client side of possession, and the first moment this machine has a pawn to watch.
+	BindToWeaponComponent();
+}
+
+void AMALPlayerController::BindToWeaponComponent()
+{
+	UnbindWeaponComponent();
+
+	APawn* ControlledPawn = GetPawn();
+	UMALWeaponComponent* WeaponComponent =
+		ControlledPawn ? ControlledPawn->FindComponentByClass<UMALWeaponComponent>() : nullptr;
+	if (!WeaponComponent)
+	{
+		return;
+	}
+
+	BoundWeaponComponent = WeaponComponent;
+	WeaponChangedDelegateHandle = WeaponComponent->OnEquippedWeaponChanged.AddUObject(
+		this, &AMALPlayerController::HandleEquippedWeaponChanged);
+}
+
+void AMALPlayerController::UnbindWeaponComponent()
+{
+	if (UMALWeaponComponent* WeaponComponent = BoundWeaponComponent.Get())
+	{
+		WeaponComponent->OnEquippedWeaponChanged.Remove(WeaponChangedDelegateHandle);
+	}
+
+	BoundWeaponComponent.Reset();
+	WeaponChangedDelegateHandle.Reset();
+}
+
+void AMALPlayerController::HandleEquippedWeaponChanged()
+{
+	RefreshAbilityBar();
+
+	// Again next frame. A client learns about a swap from OnRep_EquippedWeapon, while the specs
+	// the swap granted arrive in a replication bunch of their own; when the property wins the
+	// race, the first refresh still sees the previous kit.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimerForNextTick(this, &AMALPlayerController::RefreshAbilityBar);
+	}
+}
+
+void AMALPlayerController::RefreshAbilityBar()
+{
+	UMALUISubsystem* UISubsystem = ULocalPlayer::GetSubsystem<UMALUISubsystem>(GetLocalPlayer());
+	UMALHUDWidget* HUD = UISubsystem ? UISubsystem->GetHUD() : nullptr;
+	UMALAbilityBarViewModel* AbilityBar = HUD ? HUD->GetAbilityBarViewModel() : nullptr;
+	if (AbilityBar)
+	{
+		AbilityBar->RefreshSlots();
+	}
+}
+
+void AMALPlayerController::ServerEquipWeapon_Implementation(UMALWeaponDefinition* Weapon)
+{
+	APawn* ControlledPawn = GetPawn();
+	UMALWeaponComponent* WeaponComponent =
+		ControlledPawn ? ControlledPawn->FindComponentByClass<UMALWeaponComponent>() : nullptr;
+	if (!WeaponComponent)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ServerEquipWeapon: %s has no weapon component."), *GetNameSafe(ControlledPawn));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("ServerEquipWeapon: %s equips %s."),
+		*GetNameSafe(ControlledPawn), Weapon ? *Weapon->GetName() : TEXT("nothing"));
+
+	WeaponComponent->EquipWeapon(Weapon);
+}
+
+void AMALPlayerController::MALEQUIP(const FString& WeaponAssetPath)
+{
+	if (WeaponAssetPath.IsEmpty())
+	{
+		ServerEquipWeapon(nullptr);
+		return;
+	}
+
+	UMALWeaponDefinition* Weapon = LoadObject<UMALWeaponDefinition>(nullptr, *WeaponAssetPath);
+	if (!Weapon)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALEQUIP: no weapon definition at '%s'."), *WeaponAssetPath);
+		return;
+	}
+
+	ServerEquipWeapon(Weapon);
 }

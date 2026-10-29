@@ -8,6 +8,8 @@
 #include "Character/MALCharacterBase.h"
 #include "Combat/MALCombatEvents.h"
 #include "Combat/MALCombatEventsSubsystem.h"
+#include "Combat/MALWeaponComponent.h"
+#include "Combat/MALWeaponDefinition.h"
 #include "Curves/RealCurve.h"
 #include "Data/MALClassDefinition.h"
 #include "Data/MALSkillTreeDefinition.h"
@@ -42,6 +44,26 @@ namespace
 			const float Base = AbilitySystemComponent->GetNumericAttributeBase(Attribute);
 			AbilitySystemComponent->SetNumericAttributeBase(Attribute, Base + Delta);
 		}
+	}
+
+	/**
+	 * Human-readable name for a weapon requirement tag.
+	 *
+	 * The last segment, because the tag is the only thing the skill tree holds: it names a weapon
+	 * family, not an asset, and several definitions can share one. "Requires Sword." is the point
+	 * -- the player needs to know which weapon to pick up, not which asset the designer wired.
+	 */
+	FText WeaponTagDisplayName(const FGameplayTag& WeaponTag)
+	{
+		FString FullName = WeaponTag.GetTagName().ToString();
+
+		int32 LastDot = INDEX_NONE;
+		if (FullName.FindLastChar(TEXT('.'), LastDot))
+		{
+			FullName.RightChopInline(LastDot + 1);
+		}
+
+		return FText::FromString(FullName);
 	}
 }
 
@@ -500,6 +522,25 @@ EMALSkillNodeState UMALProgressionComponent::EvaluateSkillState(FGameplayTag Ski
 			NSLOCTEXT("MALSkill", "LevelTooLow", "Requires level {0}."),
 			FText::AsNumber(Node->RequiredLevel));
 		return EMALSkillNodeState::Locked;
+	}
+
+	// Weapon gate, ahead of the prerequisites because it is not a spending problem: no amount of
+	// levels or points makes the node buyable while the wrong weapon is in hand. The same check
+	// runs again on the server inside UnlockSkill, so a forged request cannot skip it.
+	if (Node->RequiredWeaponTag.IsValid())
+	{
+		const APawn* OwningPawn = OwningPlayerState ? OwningPlayerState->GetPawn() : nullptr;
+		const UMALWeaponComponent* WeaponComponent =
+			OwningPawn ? OwningPawn->FindComponentByClass<UMALWeaponComponent>() : nullptr;
+		const UMALWeaponDefinition* Weapon = WeaponComponent ? WeaponComponent->GetEquippedWeapon() : nullptr;
+
+		if (!Weapon || !Weapon->WeaponTag.MatchesTag(Node->RequiredWeaponTag))
+		{
+			OutReason = FText::Format(
+				NSLOCTEXT("MALSkill", "WeaponRequired", "Requires {0}."),
+				WeaponTagDisplayName(Node->RequiredWeaponTag));
+			return EMALSkillNodeState::Locked;
+		}
 	}
 
 	for (const FGameplayTag& Prerequisite : Node->Prerequisites)
