@@ -18,6 +18,7 @@ class UMALAttributeSet;
 class UMALClassDefinition;
 class UMALWeaponComponent;
 class UMALComboComponent;
+class UAnimInstance;
 struct FMALDamageResolvedEvent;
 
 /**
@@ -214,6 +215,27 @@ public:
 	 */
 	int32 GetExperienceReward() const;
 
+	// --- Animation ---
+
+	/**
+	 * Locomotion layer linked when nothing is equipped, or when the equipped weapon names none.
+	 *
+	 * A layer node in the host animation blueprint resolves to nothing without a linked class,
+	 * which reads as a reference pose. This default keeps a character that starts unarmed at a
+	 * valid pose instead of a T-pose.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Animation")
+	TSoftClassPtr<UAnimInstance> DefaultLocomotionLayer;
+
+	/**
+	 * Every machine: relink the ground locomotion layer to whatever the equipped weapon names.
+	 *
+	 * Driven by UMALWeaponComponent::OnEquippedWeaponChanged, which fires on the authority and on
+	 * every client, so the layer swap follows the replicated weapon instead of being decided once
+	 * on the server.
+	 */
+	void RefreshLocomotionLayer();
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttribute;
 
@@ -327,6 +349,27 @@ protected:
 	bool bAbilitiesGranted = false;
 
 private:
+	/** Link RequestedLocomotionLayer, retrying on later ticks while the mesh cannot take it. */
+	void ApplyLocomotionLayer();
+
+	/** Layer class last linked, so re-equipping the same weapon does not rebuild it. */
+	UPROPERTY(Transient)
+	TSubclassOf<UAnimInstance> AppliedLocomotionLayer;
+
+	/** Layer class the current equip asks for; kept while the link waits for a usable mesh. */
+	UPROPERTY(Transient)
+	TSubclassOf<UAnimInstance> RequestedLocomotionLayer;
+
+	/**
+	 * Ticks already spent retrying the current request. A swap requested before the mesh has an
+	 * animation instance, or during a hit-stop, waits for the first tick that can take it; the
+	 * bound only exists so a layer that can never link gives up instead of retrying forever.
+	 */
+	int32 LocomotionLinkAttempts = 0;
+
+	/** About half a second of ticks: longer than a hit-stop, short enough to fail loudly. */
+	static constexpr int32 MaxLocomotionLinkAttempts = 30;
+
 	/** Enter the death state when health crosses zero. Server only. */
 	void HandleHealthChanged(const FOnAttributeChangeData& Data);
 

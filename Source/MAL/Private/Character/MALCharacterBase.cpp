@@ -15,6 +15,7 @@
 #include "Data/MALSkillTreeDefinition.h"
 #include "GameAbilities/MALGameplayAbility.h"
 #include "Save/MALSaveSubsystem.h"
+#include "Animation/AnimInstance.h"
 #include "Engine/World.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -227,6 +228,16 @@ void AMALCharacterBase::BeginPlay()
 
 	InitializeAbilitySystem();
 
+	// The weapon component equips the starting weapon in its own BeginPlay, which runs after this
+	// one: bind first so that first broadcast is not missed. Clients receive the same signal once
+	// the replicated weapon lands in OnRep_EquippedWeapon.
+	if (WeaponComponent)
+	{
+		WeaponComponent->OnEquippedWeaponChanged.AddUObject(this, &AMALCharacterBase::RefreshLocomotionLayer);
+	}
+
+	RefreshLocomotionLayer();
+
 	if (HasAuthority())
 	{
 		ApplyDefaultAttributes();
@@ -244,8 +255,82 @@ void AMALCharacterBase::BeginPlay()
 	}
 }
 
+void AMALCharacterBase::RefreshLocomotionLayer()
+{
+	const UMALWeaponDefinition* Definition = WeaponComponent ? WeaponComponent->GetEquippedWeapon() : nullptr;
+
+	// The weapon's layer wins. Falling back to the character's default keeps the host graph from
+	// evaluating a layer node with no target, which reads as a reference pose rather than a pose
+	// that any weapon would recognise.
+	TSubclassOf<UAnimInstance> LayerClass =
+		Definition ? Definition->LocomotionLayer.LoadSynchronous() : nullptr;
+	if (!LayerClass)
+	{
+		LayerClass = DefaultLocomotionLayer.LoadSynchronous();
+	}
+
+	if (!LayerClass || LayerClass == AppliedLocomotionLayer)
+	{
+		// Relinking a class that is already applied rebuilds the linked instance and throws away
+		// its state, which a re-equip of the same weapon does not need.
+		return;
+	}
+
+	RequestedLocomotionLayer = LayerClass;
+	LocomotionLinkAttempts = 0;
+	ApplyLocomotionLayer();
+}
+
+void AMALCharacterBase::ApplyLocomotionLayer()
+{
+	if (!RequestedLocomotionLayer)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	UAnimInstance* AnimInstance = SkeletalMesh ? SkeletalMesh->GetAnimInstance() : nullptr;
+
+	// Two reasons a link legitimately has to wait: the mesh has not created its animation
+	// instance yet, and a hit-stop holds the skeleton still so a swap would land mid-freeze.
+	// Both are transient, so the request is retried on the next tick rather than dropped.
+	if (AnimInstance && !SkeletalMesh->bNoSkeletonUpdate)
+	{
+		AnimInstance->LinkAnimClassLayers(RequestedLocomotionLayer);
+
+		// LinkAnimClassLayers does nothing at all while the mesh is unregistered, and a layer node
+		// with no linked class evaluates the host's own pose, so the link is read back instead of
+		// assumed: a silent failure here is otherwise only visible as the character freezing on
+		// its reference pose.
+		if (AnimInstance->GetLinkedAnimLayerInstanceByClass(RequestedLocomotionLayer))
+		{
+			AppliedLocomotionLayer = RequestedLocomotionLayer;
+			UE_LOG(LogTemp, Display, TEXT("MAL: %s linked locomotion layer %s"), *GetName(), *RequestedLocomotionLayer->GetName());
+
+			return;
+		}
+	}
+
+	if (++LocomotionLinkAttempts < MaxLocomotionLinkAttempts)
+	{
+		GetWorldTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateUObject(this, &AMALCharacterBase::ApplyLocomotionLayer));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("MAL: %s could not link locomotion layer %s in %d ticks."),
+		*GetName(), *RequestedLocomotionLayer->GetName(), LocomotionLinkAttempts);
+}
+
 void AMALCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// The weapon component broadcasts on every equip; a pawn torn down mid-swap must not be
+	// called back into after its mesh is gone.
+	if (WeaponComponent)
+	{
+		WeaponComponent->OnEquippedWeaponChanged.RemoveAll(this);
+	}
+
 	// The subsystem and a PlayerState-owned ASC both outlive this pawn, so drop both listeners
 	// instead of leaving stale entries behind.
 	if (UWorld* World = GetWorld())

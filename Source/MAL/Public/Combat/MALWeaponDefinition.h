@@ -147,6 +147,18 @@ public:
 	// --- Animation ---
 
 	/**
+	 * Locomotion layer this weapon links into the character's animation blueprint.
+	 *
+	 * A layer is the idle/jog/sprint set the weapon poses with: the host graph keeps the state
+	 * machine and the montage slot, the layer only supplies the pose. Soft, so loading a weapon
+	 * asset for the menu does not drag every layer blueprint in with it.
+	 *
+	 * Empty keeps the layer already linked, which is what a reskin of the same blade wants.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Animation")
+	TSoftClassPtr<UAnimInstance> LocomotionLayer;
+
+	/**
 	 * Montage this weapon swings with, replacing the melee ability's own.
 	 *
 	 * Sections have to match the ones the ability enters at (PrimaryAttack_A, _B, ...): the

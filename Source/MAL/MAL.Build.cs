@@ -37,6 +37,19 @@ public class MAL : ModuleRules
 			"EngineCameras"
 		});
 
+		// The locomotion layer setup commandlet drives the animation graph editors, so it needs the
+		// graph tooling. Editor targets only: the game target never compiles that code.
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] {
+				"UnrealEd",
+				"Kismet",
+				"BlueprintGraph",
+				"AnimGraph",
+				"AssetTools"
+			});
+		}
+
 		// Adds the GameplayDebugger dependency and the WITH_GAMEPLAY_DEBUGGER define for the
 		// targets that can actually run the in-game debugger, and compiles our page out everywhere
 		// else. The page itself lives behind that define.
