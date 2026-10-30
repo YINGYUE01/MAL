@@ -21,6 +21,9 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FMALWeaponHitSignature, const FMALHitResult&
  */
 DECLARE_MULTICAST_DELEGATE(FMALWeaponChangedSignature);
 
+/** Broadcast when the round count changes, on the authority and on clients. */
+DECLARE_MULTICAST_DELEGATE(FMALAmmoChangedSignature);
+
 /**
  * UMALWeaponComponent
  *
@@ -95,6 +98,32 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
 	float GetDamageMultiplier() const;
 
+	// --- Ammo ---
+
+	/**
+	 * Server only: spend Count rounds.
+	 *
+	 * Returns true when the shot may fire: a weapon carrying an infinite supply (MagazineSize
+	 * of INDEX_NONE) always passes, and so does a weapon without a ranged attack. Blueprint
+	 * callable so a reload or pickup flow can spend rounds through the same door later.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "MAL|Combat|Ammo")
+	bool TryConsumeAmmo(int32 Count = 1);
+
+	/** Rounds left, or INDEX_NONE when the equipped weapon never runs out. */
+	UFUNCTION(BlueprintPure, Category = "MAL|Combat|Ammo")
+	int32 GetAmmo() const { return Ammo; }
+
+	/** True while the equipped weapon does not track rounds. */
+	UFUNCTION(BlueprintPure, Category = "MAL|Combat|Ammo")
+	bool HasInfiniteAmmo() const { return Ammo == INDEX_NONE; }
+
+	/**
+	 * Fired when the round count changes. Infinite weapons never fire it: their ammo is not a
+	 * number that moves, so a UI listening here can draw "infinite" once and then forget it.
+	 */
+	FMALAmmoChangedSignature OnAmmoChanged;
+
 	/** Primitive name the hit window falls back to, and the box an equipped weapon resizes. */
 	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
 	FName GetHitBoxComponentName() const { return HitBoxComponentName; }
@@ -125,6 +154,10 @@ protected:
 	UFUNCTION()
 	void OnRep_EquippedWeapon();
 
+	/** Refill from the equipped definition's magazine. */
+	UFUNCTION()
+	void OnRep_Ammo();
+
 	UFUNCTION()
 	void HandleOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
@@ -152,6 +185,9 @@ private:
 
 	/** Size and centre the hit volume for the equipped weapon. */
 	void ApplyHitBox();
+
+	/** Take the magazine size of the equipped definition as the current round count. */
+	void ApplyAmmo();
 
 	/** Unbind and turn collision off. Safe to call repeatedly. */
 	void ReleaseCollision();
@@ -182,6 +218,16 @@ private:
 	/** Cached hit volume. Kept off CollisionComponent, which only exists during a window. */
 	UPROPERTY(Transient)
 	TObjectPtr<UBoxComponent> HitBox;
+
+	/**
+	 * Rounds left in the equipped weapon, INDEX_NONE when it is unlimited.
+	 *
+	 * One counter rather than one per loadout entry: this project ships a single ranged weapon,
+	 * and a swap refills the magazine. Per-weapon pools become necessary only once two ranged
+	 * weapons have to hold different counts, and then this moves next to the loadout list.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_Ammo)
+	int32 Ammo = INDEX_NONE;
 
 	/** Trail spawned for the equipped weapon, destroyed whenever the weapon changes. */
 	UPROPERTY(Transient)

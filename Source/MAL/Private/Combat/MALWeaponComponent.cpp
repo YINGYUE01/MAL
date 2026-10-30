@@ -78,6 +78,7 @@ void UMALWeaponComponent::BeginPlay()
 		// state; OnRep_EquippedWeapon applies whatever the server actually chose.
 		ApplyVisuals();
 		ApplyHitBox();
+		ApplyAmmo();
 	}
 }
 
@@ -86,6 +87,7 @@ void UMALWeaponComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(UMALWeaponComponent, EquippedWeapon);
+	DOREPLIFETIME(UMALWeaponComponent, Ammo);
 }
 
 void UMALWeaponComponent::OnRep_EquippedWeapon()
@@ -94,10 +96,17 @@ void UMALWeaponComponent::OnRep_EquippedWeapon()
 	// and hit volume. Hit detection is deliberately not in this path: it stays on the authority.
 	ApplyVisuals();
 	ApplyHitBox();
+	ApplyAmmo();
 
 	// The abilities themselves were granted on the server and replicate on their own; this is
 	// only the cue for listeners that resolve them again.
 	OnEquippedWeaponChanged.Broadcast();
+}
+
+void UMALWeaponComponent::OnRep_Ammo()
+{
+	// Ammo drives UI only, so the replicated value needs no further application.
+	OnAmmoChanged.Broadcast();
 }
 
 void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
@@ -117,6 +126,7 @@ void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
 		// Handing over the same asset is still a request to re-apply its setup.
 		ApplyVisuals();
 		ApplyHitBox();
+		ApplyAmmo();
 		ApplyAbilities();
 		OnEquippedWeaponChanged.Broadcast();
 		return;
@@ -127,6 +137,7 @@ void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
 	// OnRep only runs on clients, so the authority applies the swap by hand.
 	ApplyVisuals();
 	ApplyHitBox();
+	ApplyAmmo();
 
 	// After the definition has landed: the ability layer reads the equipped weapon, so handing
 	// it over before the assignment would rebuild from the previous one.
@@ -183,6 +194,47 @@ void UMALWeaponComponent::CycleWeapon(int32 Direction)
 float UMALWeaponComponent::GetDamageMultiplier() const
 {
 	return EquippedWeapon ? EquippedWeapon->DamageMultiplier : 1.0f;
+}
+
+void UMALWeaponComponent::ApplyAmmo()
+{
+	// Unarmed and unlimited weapons both read as INDEX_NONE: there is no number to show and
+	// nothing to spend, so a UI that draws the count simply draws nothing.
+	const int32 NewAmmo = EquippedWeapon ? EquippedWeapon->MagazineSize : INDEX_NONE;
+	if (Ammo == NewAmmo)
+	{
+		return;
+	}
+
+	Ammo = NewAmmo;
+	OnAmmoChanged.Broadcast();
+}
+
+bool UMALWeaponComponent::TryConsumeAmmo(int32 Count)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority())
+	{
+		// The round count is spent on the server only; a client that predicted it would desync
+		// from the replicated value on the next shot.
+		return false;
+	}
+
+	if (Count <= 0 || Ammo == INDEX_NONE)
+	{
+		return true;
+	}
+
+	if (Ammo < Count)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("TryConsumeAmmo: %s is empty (%d left, %d requested)."),
+			*GetNameSafe(Owner), Ammo, Count);
+		return false;
+	}
+
+	Ammo -= Count;
+	OnAmmoChanged.Broadcast();
+	return true;
 }
 
 void UMALWeaponComponent::StartHitWindow(int32 ComboStep, FName CollisionComponentName)

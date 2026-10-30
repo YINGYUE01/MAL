@@ -41,6 +41,16 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
 	FGameplayTag Status_Casting;
 
+	/**
+	 * Entity is aiming (drawing a bow, shouldering a firearm).
+	 *
+	 * Deliberately NOT in the Move/Jump lock set AMALPlayerController tests: an aiming character
+	 * still strafes, only slower. The speed change belongs to the character, this tag is what
+	 * animation and UI read.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
+	FGameplayTag Status_Aiming;
+
 	// -----------------------------------------------------------------------------
 	// Event Tags - Represent events that can be triggered
 	// -----------------------------------------------------------------------------
@@ -87,6 +97,9 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Weapon")
 	FGameplayTag Weapon_Spear;
 
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Weapon")
+	FGameplayTag Weapon_Bow;
+
 	// -----------------------------------------------------------------------------
 	// Data Tags - Represent data/attribute types
 	// -----------------------------------------------------------------------------
@@ -118,6 +131,10 @@ public:
 	/** Self-buff ability */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
 	FGameplayTag Ability_Buff;
+
+	/** Charged bow shot. One asset drives every tier, so there is one attack tag for the bow. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
+	FGameplayTag Ability_BowShot;
 
 	// -----------------------------------------------------------------------------
 	// Cooldown Tags - Granted by a cooldown GameplayEffect for its whole duration

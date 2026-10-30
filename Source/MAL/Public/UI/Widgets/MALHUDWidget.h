@@ -101,10 +101,59 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|UI")
 	TObjectPtr<UMALProgressionViewModel> ProgressionViewModel;
 
+	/**
+	 * Aiming crosshair.
+	 *
+	 * Drawn in the HUD's own paint pass rather than authored as a widget blueprint asset: the
+	 * reticle is four strokes, and an image asset would need a texture plus a visibility
+	 * binding that every HUD blueprint would have to repeat. Native paint gives every HUD
+	 * blueprint the reticle without any per-blueprint setup.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Crosshair")
+	bool bDrawCrosshair = true;
+
+	/** Reticle tint. Alpha is honoured, so the reticle can sit semi-transparent. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Crosshair")
+	FLinearColor CrosshairColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.9f);
+
+	/** Length of each of the four strokes, in slate units (before DPI scaling). */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Crosshair", meta = (ClampMin = "1.0"))
+	float CrosshairStrokeLength = 10.0f;
+
+	/** Distance between the screen centre and the inner end of each stroke. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Crosshair", meta = (ClampMin = "0.0"))
+	float CrosshairGap = 6.0f;
+
+	/** Line thickness, in slate units (before DPI scaling). */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Crosshair", meta = (ClampMin = "0.5"))
+	float CrosshairThickness = 2.0f;
+
+	/**
+	 * Draw the reticle over the HUD's own content.
+	 *
+	 * Aiming is read off the pawn (AMALCharacterBase::IsAiming) at paint time; the gameplay
+	 * tag event below only exists to invalidate the cached paint when the stance changes.
+	 */
+	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
+		FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,
+		bool bParentEnabled) const override;
+
 	virtual void NativeDestruct() override;
 
 private:
 	void TryBindAbilitySystem();
+
+	/**
+	 * Listen for MAL.Status.Aiming coming and going, so the reticle repaints when the stance
+	 * changes. The HUD's paint is cached between frames, so without this the crosshair would
+	 * only appear the next time something else dirtied the widget.
+	 */
+	void BindCrosshairToAbilitySystem(UAbilitySystemComponent* InAbilitySystemComponent);
+
+	/** Drop the aim listener (destruct, or the HUD rebinding to a different ASC). */
+	void UnbindCrosshair();
+
+	void HandleAimingTagChanged(FGameplayTag Tag, int32 NewCount);
 
 	/**
 	 * Hand the progression view model to nested widgets that cannot inherit it.
@@ -128,4 +177,10 @@ private:
 
 	/** Poll that waits for the PlayerState's ASC to replicate in. */
 	FMALRetryPoll BindRetryPoll;
+
+	/** ASC the reticle listens to; kept so a rebind can unregister from the old one. */
+	TWeakObjectPtr<UAbilitySystemComponent> CrosshairAbilitySystem;
+
+	/** Handle of the MAL.Status.Aiming listener registered on CrosshairAbilitySystem. */
+	FDelegateHandle AimingTagDelegateHandle;
 };

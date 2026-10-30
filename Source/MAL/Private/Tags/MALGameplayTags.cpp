@@ -26,6 +26,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	Status_Dead = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Dead")), TEXT("Entity is dead"));
 	Status_Attacking = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Attacking")), TEXT("Entity is performing an attack"));
 	Status_Casting = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Casting")), TEXT("Entity is casting and cannot move"));
+	Status_Aiming = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Aiming")), TEXT("Entity is aiming; movement is allowed but slower"));
 
 	// Event Tags
 	Event_Hit = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.Hit")), TEXT("Entity was hit or damaged"));
@@ -39,6 +40,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	Weapon_Hammer = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Hammer")), TEXT("Hammer family"));
 	Weapon_Scythe = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Scythe")), TEXT("Scythe family"));
 	Weapon_Spear = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Spear")), TEXT("Spear family"));
+	Weapon_Bow = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Bow")), TEXT("Bow family"));
 
 	// Data Tags
 	Data_Damage = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Data.Damage")), TEXT("Damage attribute"));
@@ -50,6 +52,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	// Ability Tags
 	Ability_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Attack")), TEXT("Attack ability"));
 	Ability_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Buff")), TEXT("Self-buff ability"));
+	Ability_BowShot = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.BowShot")), TEXT("Charged bow shot"));
 
 	// Cooldown Tags
 	Cooldown_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Attack")), TEXT("Attack is on cooldown"));

@@ -19,6 +19,8 @@ class UMALClassDefinition;
 class UMALWeaponComponent;
 class UMALComboComponent;
 class UAnimInstance;
+class USpringArmComponent;
+class UCameraComponent;
 struct FMALDamageResolvedEvent;
 
 /**
@@ -236,6 +238,53 @@ public:
 	 */
 	void RefreshLocomotionLayer();
 
+	// --- Aiming ---
+
+	/**
+	 * Enter or leave the aiming stance: face the camera, strafe instead of turning, walk slower
+	 * and pull the camera in.
+	 *
+	 * Presentation only - no tag, no ability. The ranged ability owns MAL.Status.Aiming through
+	 * its activation tags, so the stance and the tag share one lifetime by construction. Safe
+	 * to call repeatedly; only the first call in each direction does work. Restores exactly the
+	 * rotation mode, walk speed and camera pose that were in place before the first aim.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MAL|Combat|Aim")
+	void SetAiming(bool bNewAiming);
+
+	UFUNCTION(BlueprintPure, Category = "MAL|Combat|Aim")
+	bool IsAiming() const { return bIsAiming; }
+
+	/**
+	 * World transform a projectile leaves from: the equipped weapon's spawn socket, or the
+	 * character as a fallback when the weapon has no mesh or no such socket.
+	 *
+	 * @param PreferredSocket socket to try first; None reads the equipped definition.
+	 */
+	UFUNCTION(BlueprintPure, Category = "MAL|Combat|Aim")
+	FTransform GetWeaponMuzzleTransform(FName PreferredSocket = NAME_None) const;
+
+	/** Walk speed multiplier applied while aiming. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Combat|Aim", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float AimingWalkSpeedScale = 0.45f;
+
+	/**
+	 * Spring arm length while aiming. Zero (the default) pulls the boom in to a fixed fraction
+	 * of whatever rest length the character authored, so the zoom stays proportional on a pawn
+	 * whose camera was never touched by hand. A positive value overrides that ratio.
+	 * Ignored when the character has no spring arm.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Combat|Aim", meta = (ClampMin = "0.0"))
+	float AimingArmLength = 0.0f;
+
+	/** Camera field of view while aiming. Ignored when the character has no camera component. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Combat|Aim", meta = (ClampMin = "5.0"))
+	float AimingCameraFOV = 80.0f;
+
+	/** Seconds the camera takes to reach the aiming pose. Zero snaps. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Combat|Aim", meta = (ClampMin = "0.0"))
+	float AimingCameraBlendTime = 0.15f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttribute;
 
@@ -352,6 +401,15 @@ private:
 	/** Link RequestedLocomotionLayer, retrying on later ticks while the mesh cannot take it. */
 	void ApplyLocomotionLayer();
 
+	/** Start the camera blend toward the aiming or the rest pose. */
+	void StartAimingCameraBlend(bool bEnter);
+
+	/** One step of the camera blend; clears its own timer on arrival. */
+	void StepAimingCameraBlend();
+
+	/** Place the camera at Alpha (0 = pose before aiming, 1 = aiming pose). */
+	void ApplyAimingCameraBlend(float Alpha);
+
 	/** Layer class last linked, so re-equipping the same weapon does not rebuild it. */
 	UPROPERTY(Transient)
 	TSubclassOf<UAnimInstance> AppliedLocomotionLayer;
@@ -392,6 +450,31 @@ private:
 	bool bPendingDeathCheck = false;
 
 	FTimerHandle PendingDeathTimer;
+
+	/** True between SetAiming(true) and SetAiming(false). */
+	bool bIsAiming = false;
+
+	/** Rotation mode in place before the first aim, restored on exit. */
+	bool bSavedOrientRotationToMovement = false;
+	bool bSavedUseControllerRotationYaw = false;
+
+	/** Walk speed in place before the first aim, restored on exit. */
+	float SavedAimWalkSpeed = 0.0f;
+
+	/** Spring arm length and camera FOV authored in the blueprint, restored on exit. */
+	float AuthoredArmLength = 0.0f;
+	float AuthoredCameraFOV = 90.0f;
+	bool bCameraPoseCaptured = false;
+
+	/** Camera blend state; the timer runs only while a blend is in flight. */
+	FTimerHandle AimingCameraBlendTimer;
+	TWeakObjectPtr<USpringArmComponent> AimingSpringArm;
+	TWeakObjectPtr<UCameraComponent> AimingCamera;
+	float BlendStartArmLength = 0.0f;
+	float BlendEndArmLength = 0.0f;
+	float BlendStartFOV = 0.0f;
+	float BlendEndFOV = 0.0f;
+	float BlendElapsed = 0.0f;
 
 	/** Attach to the health attribute on whichever ASC this character currently uses. */
 	void BindHealthChange();

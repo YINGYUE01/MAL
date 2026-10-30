@@ -5,9 +5,11 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Blueprint/WidgetTree.h"
+#include "Character/MALCharacterBase.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "Rendering/DrawElements.h"
 #include "Tags/MALGameplayTags.h"
 #include "TimerManager.h"
 #include "UI/ViewModel/MALAbilityBarViewModel.h"
@@ -175,6 +177,7 @@ void UMALHUDWidget::TryBindAbilitySystem()
 		AbilityBarViewModel->SetAbilitySystemComponent(AbilitySystemComponent);
 		ProgressionViewModel->SetAbilitySystemComponent(AbilitySystemComponent);
 		PublishAbilitySystemToNestedWidgets(AbilitySystemComponent);
+		BindCrosshairToAbilitySystem(AbilitySystemComponent);
 		BindRetryPoll.Reset(GetWorld());
 		return;
 	}
@@ -187,9 +190,96 @@ void UMALHUDWidget::TryBindAbilitySystem()
 		AbilitySystemBindRetryInterval, AbilitySystemBindFastRetryCount, AbilitySystemBindSlowRetryInterval);
 }
 
+void UMALHUDWidget::BindCrosshairToAbilitySystem(UAbilitySystemComponent* InAbilitySystemComponent)
+{
+	if (CrosshairAbilitySystem.Get() == InAbilitySystemComponent)
+	{
+		// Same ASC: TryBindAbilitySystem re-enters here on every possession change, and a second
+		// registration would leave the first one dangling.
+		return;
+	}
+
+	UnbindCrosshair();
+
+	CrosshairAbilitySystem = InAbilitySystemComponent;
+	AimingTagDelegateHandle = InAbilitySystemComponent->RegisterGameplayTagEvent(
+		UMALGameplayTags::Get()->Status_Aiming, EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &UMALHUDWidget::HandleAimingTagChanged);
+}
+
+void UMALHUDWidget::UnbindCrosshair()
+{
+	if (UAbilitySystemComponent* AbilitySystemComponent = CrosshairAbilitySystem.Get())
+	{
+		if (AimingTagDelegateHandle.IsValid())
+		{
+			AbilitySystemComponent->UnregisterGameplayTagEvent(AimingTagDelegateHandle,
+				UMALGameplayTags::Get()->Status_Aiming, EGameplayTagEventType::NewOrRemoved);
+		}
+	}
+
+	AimingTagDelegateHandle.Reset();
+	CrosshairAbilitySystem.Reset();
+}
+
+void UMALHUDWidget::HandleAimingTagChanged(FGameplayTag Tag, int32 NewCount)
+{
+	// The reticle itself is read from the pawn while painting; the tag only says that the pose
+	// the slate widget cached is stale. Without this the crosshair would wait for some other
+	// change to dirty the HUD before it appeared.
+	InvalidateLayoutAndVolatility();
+}
+
+int32 UMALHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
+	FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,
+	bool bParentEnabled) const
+{
+	const int32 PaintedLayer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+
+	if (!bDrawCrosshair)
+	{
+		return PaintedLayer;
+	}
+
+	// Shown only while the bow is up: "aiming" is the stance ability's presentation, so the
+	// reticle and the stance cannot disagree about whether the player is aiming.
+	const AMALCharacterBase* Character = Cast<AMALCharacterBase>(GetOwningPlayerPawn());
+	if (!Character || !Character->IsAiming())
+	{
+		return PaintedLayer;
+	}
+
+	// The HUD fills the viewport, so its centre is the screen centre, which is exactly where
+	// the aim trace (Controller->GetPlayerViewPoint) shoots.
+	const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
+	const float Inner = CrosshairGap;
+	const float Outer = CrosshairGap + CrosshairStrokeLength;
+	const FPaintGeometry PaintGeometry = AllottedGeometry.ToPaintGeometry();
+
+	// One call per stroke: MakeLines joins the points it is given, so a single call would also
+	// draw a diagonal from one stroke's end to the next one's start.
+	auto DrawStroke = [&](const FVector2D& From, const FVector2D& To)
+	{
+		TArray<FVector2D> Points;
+		Points.Add(Center + From);
+		Points.Add(Center + To);
+
+		FSlateDrawElement::MakeLines(OutDrawElements, PaintedLayer + 1, PaintGeometry, Points,
+			ESlateDrawEffect::None, CrosshairColor, true, CrosshairThickness);
+	};
+
+	DrawStroke(FVector2D(Inner, 0.0f), FVector2D(Outer, 0.0f));
+	DrawStroke(FVector2D(-Inner, 0.0f), FVector2D(-Outer, 0.0f));
+	DrawStroke(FVector2D(0.0f, Inner), FVector2D(0.0f, Outer));
+	DrawStroke(FVector2D(0.0f, -Inner), FVector2D(0.0f, -Outer));
+
+	return PaintedLayer + 1;
+}
+
 void UMALHUDWidget::NativeDestruct()
 {
 	BindRetryPoll.Reset(GetWorld());
+	UnbindCrosshair();
 
 	// Unbind before the widget goes away so the view model cannot push into half-destroyed
 	// widget bindings.

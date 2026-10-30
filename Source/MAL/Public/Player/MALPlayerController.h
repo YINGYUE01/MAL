@@ -102,6 +102,26 @@ public:
 	void MALEQUIP(const FString& WeaponAssetPath);
 
 	/**
+	 * Debug: press the LMB ability of the equipped weapon and release it after ChargeSeconds.
+	 *
+	 * Same buffered path a mouse press takes, so a charge shot can be exercised from the console
+	 * or a headless run, where there is no input device to hold the button. Shots > 1 fires a
+	 * burst, which is what proves a shot ends cleanly enough for the next one to start.
+	 */
+	UFUNCTION(Exec)
+	void MALFIRE(float ChargeSeconds = 0.5f, int32 Shots = 1);
+
+	/**
+	 * Debug: log where the player's view comes from and what the pawn's camera rig looks like.
+	 *
+	 * Prints the view point plus every owned component with its creation method and, for scene
+	 * components, the attachment parent -- enough to tell a working native rig from a stray
+	 * blueprint camera without opening the editor.
+	 */
+	UFUNCTION(Exec)
+	void MALCAM();
+
+	/**
 	 * Client -> server: put Count banked points into a primary stat.
 	 *
 	 * The attribute panel lives on the client but the primaries are only writable on the
@@ -206,6 +226,16 @@ private:
 
 	/** The component BindToWeaponComponent is listening to. Weak: the pawn can die under us. */
 	TWeakObjectPtr<UMALWeaponComponent> BoundWeaponComponent;
+
+	/** Pending release of the press MALFIRE made on the LMB input tag. */
+	FTimerHandle DebugFireReleaseTimer;
+
+	/** Press LMB once and queue the release; re-entered by MALFIRE for each shot of a burst. */
+	void BeginDebugFire();
+
+	float DebugFireChargeSeconds = 0.5f;
+
+	int32 DebugFireShotsLeft = 0;
 
 	FDelegateHandle WeaponChangedDelegateHandle;
 

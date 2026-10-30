@@ -14,6 +14,7 @@ class UNiagaraSystem;
 class UAnimMontage;
 class UMALAbilitySet;
 class UMALSkillTreeDefinition;
+class AMALProjectile;
 
 /**
  * UMALWeaponDefinition
@@ -143,6 +144,50 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Damage", meta = (ClampMin = "0.0"))
 	float DamageMultiplier = 1.0f;
+
+	// --- Ranged ---
+
+	/**
+	 * Projectile a ranged ability spawns for this weapon. Empty means the weapon has no ranged
+	 * attack and a ranged ability using it refuses to fire.
+	 *
+	 * The class is where flight speed, gravity, lifetime and the arrow mesh are authored; the
+	 * ability only supplies damage, tier tuning and where to aim.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Ranged")
+	TSubclassOf<AMALProjectile> ProjectileClass;
+
+	/**
+	 * Socket on the weapon mesh the projectile leaves from. None falls back to AttachSocketName.
+	 *
+	 * The shot is aimed from the camera and fired from this socket, so a socket at the nock of
+	 * the arrow keeps the visual and the trajectory in agreement.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Ranged")
+	FName ProjectileSpawnSocketName = TEXT("arrow");
+
+	/**
+	 * Mesh drawn for this weapon's projectiles - the arrow itself, not the launcher.
+	 *
+	 * Lives here rather than in the projectile class so a reskin of the same bow can switch
+	 * arrows with the data asset, and so C++ carries no content path of its own.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Ranged")
+	TObjectPtr<UStaticMesh> ProjectileMesh;
+
+	/** Offset from the projectile root to the mesh: facing and scale of the arrow art. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Ranged")
+	FTransform ProjectileMeshOffset = FTransform::Identity;
+
+	/**
+	 * Rounds a full weapon carries. INDEX_NONE (the default) keeps the weapon supplied forever,
+	 * which is how the bow ships; a real magazine needs a reload path before setting this.
+	 *
+	 * Lives on the definition because it is the weapon's capacity, not its current state: the
+	 * count itself sits on UMALWeaponComponent and is consumed per shot.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Ranged")
+	int32 MagazineSize = INDEX_NONE;
 
 	// --- Animation ---
 

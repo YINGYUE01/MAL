@@ -16,7 +16,9 @@
 #include "Components/MALProgressionComponent.h"
 #include "AbilitySystem/Attributes/MALPrimaryStat.h"
 #include "Player/MALPlayerState.h"
+#include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "UI/Framework/MALDamageNumberSubsystem.h"
 #include "UI/Framework/MALUISubsystem.h"
@@ -547,4 +549,106 @@ void AMALPlayerController::MALEQUIP(const FString& WeaponAssetPath)
 	}
 
 	ServerEquipWeapon(Weapon);
+}
+
+void AMALPlayerController::MALFIRE(float ChargeSeconds, int32 Shots)
+{
+	AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>();
+	UMALAbilitySystemComponent* MALASC = MALPS ? Cast<UMALAbilitySystemComponent>(MALPS->GetAbilitySystemComponent()) : nullptr;
+	if (!MALASC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALFIRE: no ability system on the player state."));
+		return;
+	}
+
+	DebugFireChargeSeconds = FMath::Max(ChargeSeconds, 0.0f);
+	DebugFireShotsLeft = FMath::Max(Shots, 1);
+
+	UE_LOG(LogTemp, Log, TEXT("MALFIRE: holding LMB for %.2fs, %d shot(s)."), DebugFireChargeSeconds, DebugFireShotsLeft);
+	BeginDebugFire();
+}
+
+void AMALPlayerController::BeginDebugFire()
+{
+	AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>();
+	UMALAbilitySystemComponent* MALASC = MALPS ? Cast<UMALAbilitySystemComponent>(MALPS->GetAbilitySystemComponent()) : nullptr;
+	UWorld* World = GetWorld();
+	if (!MALASC || !World)
+	{
+		return;
+	}
+
+	// Buffered like a mouse press: ProcessAbilityInput turns it into the ability's activation on
+	// the next frame, so the ability has entered its aim phase by the time the release lands.
+	MALASC->AbilityInputTagPressed(UMALGameplayTags::Get()->Input_LMB, FInputActionValue());
+
+	World->GetTimerManager().SetTimer(DebugFireReleaseTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+	{
+		AMALPlayerState* ReleasePlayerState = GetPlayerState<AMALPlayerState>();
+		UMALAbilitySystemComponent* ReleaseASC = ReleasePlayerState
+			? Cast<UMALAbilitySystemComponent>(ReleasePlayerState->GetAbilitySystemComponent())
+			: nullptr;
+
+		if (ReleaseASC)
+		{
+			ReleaseASC->AbilityInputTagReleased(UMALGameplayTags::Get()->Input_LMB, FInputActionValue());
+		}
+
+		if (--DebugFireShotsLeft <= 0)
+		{
+			return;
+		}
+
+		// A pause between shots: the ability owns Status.Aiming until it ends, and its own
+		// recover timer is what removes it, so pressing sooner would be refused.
+		if (UWorld* NextWorld = GetWorld())
+		{
+			NextWorld->GetTimerManager().SetTimer(DebugFireReleaseTimer,
+				FTimerDelegate::CreateWeakLambda(this, [this]() { BeginDebugFire(); }), 0.4f, false);
+		}
+	}), DebugFireChargeSeconds, false);
+}
+
+void AMALPlayerController::MALCAM()
+{
+	FVector ViewLocation = FVector::ZeroVector;
+	FRotator ViewRotation = FRotator::ZeroRotator;
+	GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+	APawn* ControlledPawn = GetPawn();
+	UE_LOG(LogTemp, Log, TEXT("MALCAM: view %s %s on pawn %s (root %s)"),
+		*ViewLocation.ToCompactString(), *ViewRotation.ToCompactString(),
+		*GetNameSafe(ControlledPawn), *GetNameSafe(ControlledPawn ? ControlledPawn->GetRootComponent() : nullptr));
+
+	if (!ControlledPawn)
+	{
+		return;
+	}
+
+	TArray<UActorComponent*> Components;
+	ControlledPawn->GetComponents(Components);
+	for (const UActorComponent* Component : Components)
+	{
+		FString Details;
+
+		if (const USpringArmComponent* Arm = Cast<USpringArmComponent>(Component))
+		{
+			Details = FString::Printf(TEXT("arm %.0f, control rotation %d, collision %d, parent %s"),
+				Arm->TargetArmLength, Arm->bUsePawnControlRotation ? 1 : 0, Arm->bDoCollisionTest ? 1 : 0,
+				*GetNameSafe(Arm->GetAttachParent()));
+		}
+		else if (const UCameraComponent* Camera = Cast<UCameraComponent>(Component))
+		{
+			Details = FString::Printf(TEXT("fov %.0f, active %d, parent %s"),
+				Camera->FieldOfView, Camera->IsActive() ? 1 : 0, *GetNameSafe(Camera->GetAttachParent()));
+		}
+		else if (const USceneComponent* Scene = Cast<USceneComponent>(Component))
+		{
+			Details = FString::Printf(TEXT("parent %s"), *GetNameSafe(Scene->GetAttachParent()));
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("MALCAM: %s : %s (creation %d) %s"),
+			*GetNameSafe(Component), *GetNameSafe(Component ? Component->GetClass() : nullptr),
+			Component ? static_cast<int32>(Component->CreationMethod) : -1, *Details);
+	}
 }

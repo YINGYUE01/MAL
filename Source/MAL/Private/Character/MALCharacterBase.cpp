@@ -25,6 +25,8 @@
 #include "BrainComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "Camera/CameraComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Tags/MALGameplayTags.h"
 #include "TimerManager.h"
@@ -320,6 +322,188 @@ void AMALCharacterBase::ApplyLocomotionLayer()
 
 	UE_LOG(LogTemp, Warning, TEXT("MAL: %s could not link locomotion layer %s in %d ticks."),
 		*GetName(), *RequestedLocomotionLayer->GetName(), LocomotionLinkAttempts);
+}
+
+namespace
+{
+	/**
+	 * Step of the aim camera blend.
+	 *
+	 * The blend is driven by a short repeating timer rather than by Tick: the character has no
+	 * other reason to tick, and a 0.15s zoom does not justify one running for the whole session.
+	 */
+	constexpr float AimingCameraBlendStep = 1.0f / 60.0f;
+
+	/**
+	 * Fraction of the authored spring arm length the aim pose pulls in to when AimingArmLength
+	 * is left at zero. Proportional rather than absolute, so a pawn with a longer default boom
+	 * still reads as an over-the-shoulder aim instead of ending up face-on with the camera.
+	 */
+	constexpr float AimingArmLengthRatio = 0.55f;
+}
+
+void AMALCharacterBase::SetAiming(bool bNewAiming)
+{
+	if (bIsAiming == bNewAiming)
+	{
+		return;
+	}
+
+	bIsAiming = bNewAiming;
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+
+	if (bNewAiming)
+	{
+		// Stance and walk speed are captured on entry, so leaving aim restores what was in place
+		// before the bow came up rather than a hardcoded default.
+		bSavedOrientRotationToMovement = Movement ? Movement->bOrientRotationToMovement : false;
+		bSavedUseControllerRotationYaw = bUseControllerRotationYaw;
+		SavedAimWalkSpeed = Movement ? Movement->MaxWalkSpeed : 0.0f;
+
+		// Facing the camera is what makes strafing read as aiming: the body follows the crosshair
+		// instead of the legs deciding where the character looks. Without it the aim offset in the
+		// animation would be a full 90 degrees every time the player walked sideways.
+		bUseControllerRotationYaw = true;
+
+		if (Movement)
+		{
+			Movement->bOrientRotationToMovement = false;
+			Movement->MaxWalkSpeed = SavedAimWalkSpeed * AimingWalkSpeedScale;
+		}
+
+		StartAimingCameraBlend(true);
+		return;
+	}
+
+	bUseControllerRotationYaw = bSavedUseControllerRotationYaw;
+
+	if (Movement)
+	{
+		Movement->bOrientRotationToMovement = bSavedOrientRotationToMovement;
+		Movement->MaxWalkSpeed = SavedAimWalkSpeed;
+	}
+
+	StartAimingCameraBlend(false);
+}
+
+void AMALCharacterBase::StartAimingCameraBlend(bool bEnter)
+{
+	// Resolve the pair from the camera side first: a character can own more than one camera
+	// component (BP_MALCharacter still carries a stray rig of its own), and only the boom the
+	// camera actually hangs off is worth zooming. The fallback keeps a camera that is not on a
+	// boom, or a boom with no camera, working as before.
+	UCameraComponent* Camera = FindComponentByClass<UCameraComponent>();
+	USpringArmComponent* SpringArm = Camera ? Cast<USpringArmComponent>(Camera->GetAttachParent()) : nullptr;
+	if (!SpringArm)
+	{
+		SpringArm = FindComponentByClass<USpringArmComponent>();
+	}
+
+	if (!SpringArm && !Camera)
+	{
+		// A camera-less character (an enemy, or a pawn whose camera is somewhere else) still aims
+		// and still strafes; only the zoom is missing.
+		return;
+	}
+
+	// The camera is authored in the character blueprint, so the first aim is the first chance to
+	// read its rest pose. Keep it: leaving aim has to restore that pose, not a guess.
+	if (!bCameraPoseCaptured)
+	{
+		AuthoredArmLength = SpringArm ? SpringArm->TargetArmLength : 0.0f;
+		AuthoredCameraFOV = Camera ? Camera->FieldOfView : 90.0f;
+		bCameraPoseCaptured = true;
+	}
+
+	AimingSpringArm = SpringArm;
+	AimingCamera = Camera;
+
+	// Zero AimingArmLength means "proportional": the aim length is derived from the rest length
+	// the character authored, so a camera that was never configured by hand still gets a sane
+	// zoom instead of snapping onto the character's back.
+	const float EnterArmLength = AimingArmLength > 0.0f ? AimingArmLength : AuthoredArmLength * AimingArmLengthRatio;
+
+	BlendStartArmLength = SpringArm ? SpringArm->TargetArmLength : 0.0f;
+	BlendStartFOV = Camera ? Camera->FieldOfView : 0.0f;
+	BlendEndArmLength = bEnter ? EnterArmLength : AuthoredArmLength;
+	BlendEndFOV = bEnter ? AimingCameraFOV : AuthoredCameraFOV;
+	BlendElapsed = 0.0f;
+
+	if (AimingCameraBlendTime <= 0.0f)
+	{
+		ApplyAimingCameraBlend(1.0f);
+		return;
+	}
+
+	// Restarted rather than accumulated: releasing and pressing again mid-blend should ride
+	// toward the new pose from where the camera is now.
+	GetWorldTimerManager().SetTimer(AimingCameraBlendTimer, this,
+		&AMALCharacterBase::StepAimingCameraBlend, AimingCameraBlendStep, true);
+}
+
+void AMALCharacterBase::StepAimingCameraBlend()
+{
+	BlendElapsed += AimingCameraBlendStep;
+
+	const float Alpha = FMath::Clamp(BlendElapsed / AimingCameraBlendTime, 0.0f, 1.0f);
+	ApplyAimingCameraBlend(Alpha);
+
+	if (Alpha >= 1.0f)
+	{
+		GetWorldTimerManager().ClearTimer(AimingCameraBlendTimer);
+	}
+}
+
+void AMALCharacterBase::ApplyAimingCameraBlend(float Alpha)
+{
+	// Eased so the zoom settles instead of stopping dead at the end of the blend.
+	const float Eased = FMath::SmoothStep(0.0f, 1.0f, Alpha);
+
+	if (USpringArmComponent* SpringArm = AimingSpringArm.Get())
+	{
+		SpringArm->TargetArmLength = FMath::Lerp(BlendStartArmLength, BlendEndArmLength, Eased);
+	}
+
+	if (UCameraComponent* Camera = AimingCamera.Get())
+	{
+		Camera->SetFieldOfView(FMath::Lerp(BlendStartFOV, BlendEndFOV, Eased));
+	}
+}
+
+FTransform AMALCharacterBase::GetWeaponMuzzleTransform(FName PreferredSocket) const
+{
+	const UMALWeaponDefinition* Definition = WeaponComponent ? WeaponComponent->GetEquippedWeapon() : nullptr;
+
+	FName Socket = PreferredSocket;
+	if (Socket.IsNone() && Definition)
+	{
+		Socket = Definition->ProjectileSpawnSocketName;
+	}
+
+	// Skeletal first: a rigged weapon carries the sockets its own skeleton was authored with.
+	const TArray<USceneComponent*> Visuals{ GetWeaponSkeletalMesh(), GetWeaponMesh() };
+
+	for (USceneComponent* Visual : Visuals)
+	{
+		if (Visual && Visual->IsVisible() && !Socket.IsNone() && Visual->DoesSocketExist(Socket))
+		{
+			return Visual->GetSocketTransform(Socket, RTS_World);
+		}
+	}
+
+	for (USceneComponent* Visual : Visuals)
+	{
+		if (Visual && Visual->IsVisible())
+		{
+			// No muzzle socket: the grip is still a better origin than the character pivot.
+			return Visual->GetComponentTransform();
+		}
+	}
+
+	// Unarmed: shoot from roughly chest height so the projectile is not born inside the floor.
+	const FVector Fallback = GetActorLocation() + GetActorForwardVector() * 50.0f + FVector(0.0f, 0.0f, 50.0f);
+	return FTransform(GetActorRotation(), Fallback);
 }
 
 void AMALCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
