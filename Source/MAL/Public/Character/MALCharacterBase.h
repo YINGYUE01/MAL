@@ -16,6 +16,7 @@ class UStaticMeshComponent;
 class UMALAbilitySystemComponent;
 class UMALAttributeSet;
 class UMALClassDefinition;
+class UGameplayAbility;
 class UMALWeaponComponent;
 class UMALComboComponent;
 class UAnimInstance;
@@ -119,6 +120,19 @@ public:
 	/** Class definition that determines which abilities this character has. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Class")
 	TObjectPtr<UMALClassDefinition> ClassDefinition;
+
+	/**
+	 * Abilities every pawn of this class has from birth, independent of the class definition and
+	 * of the weapon in hand.
+	 *
+	 * Granted under the character's own source key and paired with the ability's
+	 * InputActivatedTag, the same way an ability set entry is. This is where a movement tool that
+	 * belongs to nobody -- a dodge every player should have before picking up anything -- lives;
+	 * putting it in a weapon set would take it away on an unequip, and in a skill tree would gate
+	 * it behind progression.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Class")
+	TArray<TSubclassOf<UGameplayAbility>> InnateAbilities;
 
 	/**
 	 * ClassDefinition, falling back to the class default when the instance carries none.

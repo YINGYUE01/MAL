@@ -3,6 +3,7 @@
 #include "Character/MALCharacter.h"
 
 #include "Camera/CameraComponent.h"
+#include "GameAbilities/MALAbility_Dodge.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Player/MALPlayerState.h"
 
@@ -22,12 +23,15 @@ AMALCharacter::AMALCharacter()
 	// every player-controlled pawn starts on the player side. Blueprints can still override it.
 	TeamId = FGenericTeamId(MALTeam::Player);
 
+	// Innate: the dodge belongs to the pawn, not to a weapon or a skill purchase, so it is
+	// available on the first spawn and never disappears on an unequip.
+	InnateAbilities.Add(UMALAbility_Dodge::StaticClass());
+
 	// Third-person rig, created here because BP_MALCharacter authors no working camera. Without
-	// it the viewport falls back to the pawn's eyes and AMALCharacterBase's aim zoom has no
-	// spring arm to shorten. The names differ from the blueprint's own CameraBoom/FollowCamera
-	// nodes: those still exist in its construction script and would otherwise collide with the
-	// native properties, which breaks the blueprint compile and with it every authored
-	// component (weapon_collision included).
+	// it the viewport falls back to the pawn's eyes. The names differ from the blueprint's own
+	// CameraBoom/FollowCamera nodes: those still exist in its construction script and would
+	// otherwise collide with the native properties, which breaks the blueprint compile and with
+	// it every authored component (weapon_collision included).
 	ThirdPersonBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("ThirdPersonBoom"));
 	ThirdPersonBoom->SetupAttachment(RootComponent);
 	ThirdPersonBoom->TargetArmLength = DefaultArmLength;

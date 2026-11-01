@@ -170,9 +170,9 @@ EnhancedInput 触发 ──▶ UMALInputComponent：把 (InputTag, Value, ETrigg
 
 | 前缀 | 例 | 谁写 | 谁读 | 破坏后果 |
 | --- | --- | --- | --- | --- |
-| `MAL.Input.*` | `Input.LMB`、`Input.RMB`、`Input.F`、`Input.WeaponNext` | `UMALInputConfig` 映射 | ASC 缓冲、技能 `InputActivatedTag` | 技能被授予但无按键能触发 |
-| `MAL.Ability.*` | `Ability.Attack` | 资产 `AbilityTags` | AI 的 `BTTask_ActivateAbilityByTag` | 行为树唤不出技能 |
-| `MAL.Status.*` | `Attacking`、`Casting`、`Dead` | `ConfigureAbility()` 写进 OwnedTags | PC 吞输入、其他技能 `ActivationBlockedTags`、动画 | 重激活阻断失效 / 移动锁死 |
+| `MAL.Input.*` | `Input.LMB`、`Input.RMB`、`Input.F`、`Input.WeaponNext`、`Input.LockOn` | `UMALInputConfig` 映射 | ASC 缓冲、技能 `InputActivatedTag` | 技能被授予但无按键能触发 |
+| `MAL.Ability.*` | `Ability.Attack`、`Ability.Dodge` | 资产 `AbilityTags` | AI 的 `BTTask_ActivateAbilityByTag` | 行为树唤不出技能 |
+| `MAL.Status.*` | `Attacking`、`Casting`、`Dodging`、`Invulnerable`、`Dead` | `ConfigureAbility()` 写进 OwnedTags | PC 吞输入、其他技能 `ActivationBlockedTags`、动画 | 重激活阻断失效 / 移动锁死 |
 | `MAL.Cooldown.*` | `Cooldown.Attack`、`Cooldown.Whirlwind` | 冷却 GE 授予 | HUD 调 `GetCooldownTimeRemaining` | **冷却条永远不动**（引擎从 owner 的 tag 反查冷却） |
 | `MAL.Weapon.*` | `Weapon.Sword` | `WeaponDefinition.WeaponTag` | 技能树节点门禁 | 技能池与武器对不上 |
 | `MAL.Data.*` | `Data.Damage`、`Data.DamageBonus` | `SetByCaller` | Execution / GE | 伤害恒为 0 |

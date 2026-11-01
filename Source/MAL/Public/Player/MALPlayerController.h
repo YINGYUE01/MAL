@@ -19,6 +19,7 @@
 class UMALInputConfig;
 class UInputMappingContext;
 class UMALHitFeedbackComponent;
+class UMALLockOnComponent;
 class UMALWeaponComponent;
 class UMALWeaponDefinition;
 
@@ -78,6 +79,27 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MAL|UI")
 	void CloseTopMenu();
+
+	/**
+	 * Debug: toggle lock-on and log the result, so the toggle is testable without a key binding.
+	 *
+	 * DelaySeconds defers the toggle, which is what a headless run needs: -ExecCmds fires on the
+	 * first frame, before the spawner has put anything hostile in the level.
+	 */
+	UFUNCTION(Exec)
+	void MALLOCK(float DelaySeconds = 0.0f);
+
+	/** Debug: fire the dash input once, so the dodge is testable without a key binding. */
+	UFUNCTION(Exec)
+	void MALDODGE();
+
+	/** Target the camera is currently locked onto, or null. */
+	UFUNCTION(BlueprintPure, Category = "MAL|LockOn")
+	AActor* GetLockedTarget() const;
+
+	/** The controller-owned lock-on driver; the HUD binds its marker to it. */
+	UFUNCTION(BlueprintPure, Category = "MAL|LockOn")
+	UMALLockOnComponent* GetLockOnComponent() const { return LockOnComponent; }
 
 	/**
 	 * Debug: bank attribute points on the local player.
@@ -217,9 +239,16 @@ private:
 	/** The component BindToWeaponComponent is listening to. Weak: the pawn can die under us. */
 	TWeakObjectPtr<UMALWeaponComponent> BoundWeaponComponent;
 
+	/** Pending delayed MALLOCK toggle; a handle cannot be a temporary for FTimerManager. */
+	FTimerHandle DebugLockTimer;
+
 	FDelegateHandle WeaponChangedDelegateHandle;
 
 	/** Local hit-stop driver for confirmed hits (camera shake stays on the controller). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Combat", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UMALHitFeedbackComponent> HitFeedbackComponent;
+
+	/** Camera-facing lock-on target; lives on the controller so a respawn keeps the rig. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|LockOn", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UMALLockOnComponent> LockOnComponent;
 };

@@ -115,6 +115,14 @@ float UMALDamageExecutor::ExecuteWeaponHit(const FMALWeaponHitRequest& Request)
 		return 0.0f;
 	}
 
+	// Damage arriving inside a dodge window is discarded before any feedback fires: an i-frame
+	// that still shows a damage number would read as a bug, not as a dodge.
+	if (TargetASC->HasMatchingGameplayTag(UMALGameplayTags::Get()->Status_Invulnerable))
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("UMALDamageExecutor: %s is invulnerable, damage discarded."), *HitActor->GetName());
+		return 0.0f;
+	}
+
 	// Friendly fire is rejected here as well as in the hit window. This is a public entry point:
 	// an ability that resolves damage without going through UMALWeaponComponent would otherwise
 	// bypass the team filter entirely.

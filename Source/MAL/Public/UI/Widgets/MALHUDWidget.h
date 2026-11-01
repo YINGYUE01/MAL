@@ -103,8 +103,25 @@ protected:
 
 	virtual void NativeDestruct() override;
 
+	/**
+	 * Draw the lock-on marker over the locked pawn.
+	 *
+	 * Painted here rather than as a world widget so the marker follows the same Slate layer as
+	 * the rest of the HUD and needs no per-target component.
+	 */
+	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
+		FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,
+		bool bParentEnabled) const override;
+
 private:
 	void TryBindAbilitySystem();
+
+	/** Lock changed: start or stop the repaint poll the marker follows its target with. */
+	UFUNCTION()
+	void HandleLockChanged(AActor* LockedTarget);
+
+	/** Repaint while a target is held; the marker has to follow a moving pawn every frame. */
+	void TickLockMarker();
 
 	/**
 	 * Hand the progression view model to nested widgets that cannot inherit it.
@@ -128,4 +145,7 @@ private:
 
 	/** Poll that waits for the PlayerState's ASC to replicate in. */
 	FMALRetryPoll BindRetryPoll;
+
+	/** Repaint poll that runs only while a lock-on target is held. */
+	FTimerHandle LockMarkerPollTimer;
 };

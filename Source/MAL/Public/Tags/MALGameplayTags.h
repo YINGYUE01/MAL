@@ -41,6 +41,14 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
 	FGameplayTag Status_Casting;
 
+	/** Entity is mid-dodge; movement is locked to the dodge impulse. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
+	FGameplayTag Status_Dodging;
+
+	/** Damage arriving while this is held is discarded. Owned by the dodge window. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
+	FGameplayTag Status_Invulnerable;
+
 	// -----------------------------------------------------------------------------
 	// Event Tags - Represent events that can be triggered
 	// -----------------------------------------------------------------------------
@@ -122,6 +130,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
 	FGameplayTag Ability_Buff;
 
+	/** Dodge/dash ability. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
+	FGameplayTag Ability_Dodge;
+
 	// -----------------------------------------------------------------------------
 	// Cooldown Tags - Granted by a cooldown GameplayEffect for its whole duration
 	// -----------------------------------------------------------------------------
@@ -167,6 +179,10 @@ public:
 	/** Dash input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
 	FGameplayTag Input_Dash;
+
+	/** Lock-on toggle; not an ability input. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
+	FGameplayTag Input_LockOn;
 
 	/** Buff input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")

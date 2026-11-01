@@ -326,7 +326,7 @@ GAS 骨架与 Character 重构 → 命中停顿/镜头抖动 → 血条与伤害
 | --- | --- | --- |
 | 1 | **Primary Asset 扫描目录失效**：`DefaultGame.ini:20` 仍指向 `/Game/Data/Weapons`，而 `Content/Data` 已不存在（资产在 `/Game/Blueprint/GameAbilitySyste/Weapons`）→ 武器定义不再被 AssetManager 登记，依赖 `GetPrimaryAssetId` 的加载/寻址路径可能失效 | 实测 `Test-Path Content/Data = False` |
 | 2 | **没有背包/拾取**：`Loadout` 是组件上 `EditDefaultsOnly` 的手配列表，唯一入口是调试命令 `MALEQUIP`；换弹路径缺失（`MagazineSize` 目前恒为 `INDEX_NONE`，即无限） | `MALWeaponComponent.h:199-205`、`MALWeaponDefinition.h:183-190` |
-| 3 | **锁定瞄准（LockOn）无 C++ 实现**：输入资产 `IA_LockOnAction` 仍在，代码里找不到对应处理（历史上锁定功能已被完整回退） | `Content/Blueprint/Input/IA_LockOnAction`；grep 无 `LockOn` |
+| 3 | **锁定瞄准（LockOn）已实现**：`UMALLockOnComponent` 挂在 PC 上（角度/距离/视线筛选、只驱动 Yaw、HUD 角括号标记）；输入映射与闪避授予由 `Scripts/wire_m3_assets.py` 写入 | `Source/MAL/Public/Combat/MALLockOnComponent.h` |
 | 4 | `UMALClassDefinition::SkillTree` 已废弃但字段保留（技能树随武器走）；`GrantedAbilitySets` 与武器层的边界靠 SourceKey 维持，改动需谨慎 | `MALClassDefinition.h:29-36` |
 | 5 | **零自动化测试、零 CI**：验证依赖编译 + 手动 PIE + `Saved/Logs/MAL.log` 复盘，commandlet 是唯一可脚本化的回归手段 | `IMPLEMENT_SIMPLE_*` 计数为 0 |
 | 6 | 联机仅到「按服务器权威编写」的程度：无房间/会话、无 `OnlineSubsystem` 依赖、无专用服务器下的 UI 兜底验证，且暂停/输入恢复等边界仍留有已知问题（见 §9 第 4 条） | `MAL.Build.cs:64-67` |

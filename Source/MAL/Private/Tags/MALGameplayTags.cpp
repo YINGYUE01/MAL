@@ -26,6 +26,8 @@ void UMALGameplayTags::InitializeNativeTags()
 	Status_Dead = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Dead")), TEXT("Entity is dead"));
 	Status_Attacking = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Attacking")), TEXT("Entity is performing an attack"));
 	Status_Casting = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Casting")), TEXT("Entity is casting and cannot move"));
+	Status_Dodging = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Dodging")), TEXT("Entity is mid-dodge"));
+	Status_Invulnerable = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Invulnerable")), TEXT("Damage is discarded while this is held"));
 
 	// Event Tags
 	Event_Hit = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.Hit")), TEXT("Entity was hit or damaged"));
@@ -51,6 +53,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	// Ability Tags
 	Ability_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Attack")), TEXT("Attack ability"));
 	Ability_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Buff")), TEXT("Self-buff ability"));
+	Ability_Dodge = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Dodge")), TEXT("Dodge ability"));
 
 	// Cooldown Tags
 	Cooldown_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Attack")), TEXT("Attack is on cooldown"));
@@ -63,6 +66,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	Input_LMB = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.LMB")), TEXT("LMB input"));
 	Input_Defend = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Defend")), TEXT("Defend input"));
 	Input_Dash = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Dash")), TEXT("Dash input"));
+	Input_LockOn = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.LockOn")), TEXT("Lock-on toggle"));
 	Input_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Buff")), TEXT("Buff input"));
 	Input_AttributeMenu = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.AttributeMenu")), TEXT("Opens or closes the attribute menu; not an ability input"));
 	Input_SkillMenu = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.SkillMenu")), TEXT("Opens or closes the skill tree menu; not an ability input"));

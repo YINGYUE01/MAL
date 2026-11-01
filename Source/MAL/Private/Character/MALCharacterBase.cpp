@@ -725,6 +725,25 @@ void AMALCharacterBase::GrantAbilities()
 		// nothing in hand has only whatever these sets carry.
 	}
 
+	// Innate abilities last, so a data-driven set can never shadow them. Their input tag comes
+	// from the ability's own CDO, exactly like a set entry without an override.
+	for (const TSubclassOf<UGameplayAbility>& AbilityClass : InnateAbilities)
+	{
+		if (!AbilityClass)
+		{
+			continue;
+		}
+
+		FGameplayTag InputTag;
+		if (const UMALGameplayAbility* MALAbility =
+			Cast<UMALGameplayAbility>(AbilityClass->GetDefaultObject()))
+		{
+			InputTag = MALAbility->InputActivatedTag;
+		}
+
+		MALASC->GrantAbility(AbilityClass, InputTag, 1, NAME_None);
+	}
+
 	bAbilitiesGranted = true;
 
 	// The weapon layer is rebuilt from the same entry point: it depends on data gathered here

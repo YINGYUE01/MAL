@@ -2,6 +2,7 @@
 
 #include "Player/MALPlayerController.h"
 #include "Combat/MALHitFeedbackComponent.h"
+#include "Combat/MALLockOnComponent.h"
 #include "Combat/MALWeaponComponent.h"
 #include "Combat/MALWeaponDefinition.h"
 #include "Input/MALInputConfig.h"
@@ -33,6 +34,10 @@ AMALPlayerController::AMALPlayerController()
 	// Hit-stop is controller-owned presentation: one per player, independent of the pawn
 	// so a respawn does not orphan an in-flight freeze.
 	HitFeedbackComponent = CreateDefaultSubobject<UMALHitFeedbackComponent>(TEXT("HitFeedbackComponent"));
+
+	// Same reasoning for the lock: the camera rotation it drives is the controller's, and the
+	// component has to outlive the pawn it was locked onto.
+	LockOnComponent = CreateDefaultSubobject<UMALLockOnComponent>(TEXT("LockOnComponent"));
 }
 
 void AMALPlayerController::ClientOnHitLanded_Implementation(float HitStopDuration, TSubclassOf<UCameraShakeBase> ShakeClass)
@@ -256,6 +261,19 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 		AddYawInput(LookInput.X);
 		AddPitchInput(LookInput.Y);
 	}
+	else if (InputTag == GameplayTags->Input_LockOn)
+	{
+		// Started only: the action's repeat rate would flip the lock on and off while held.
+		if (bMenuOpen)
+		{
+			return;
+		}
+
+		if (EventType == ETriggerEvent::Started && LockOnComponent)
+		{
+			LockOnComponent->ToggleLock();
+		}
+	}
 	else if (InputTag == GameplayTags->Input_Jump)
 	{
 		if (bMovementLocked || bMenuOpen)
@@ -440,6 +458,12 @@ void AMALPlayerController::OnPossess(APawn* InPawn)
 
 	// The server side of possession. A client gets here through AcknowledgePossession instead.
 	BindToWeaponComponent();
+
+	// A new pawn invalidates whatever the previous one was locked onto.
+	if (LockOnComponent)
+	{
+		LockOnComponent->ClearLock();
+	}
 }
 
 void AMALPlayerController::AcknowledgePossession(APawn* InPawn)
@@ -448,6 +472,11 @@ void AMALPlayerController::AcknowledgePossession(APawn* InPawn)
 
 	// The client side of possession, and the first moment this machine has a pawn to watch.
 	BindToWeaponComponent();
+
+	if (LockOnComponent)
+	{
+		LockOnComponent->ClearLock();
+	}
 }
 
 void AMALPlayerController::BindToWeaponComponent()
@@ -549,6 +578,72 @@ void AMALPlayerController::MALEQUIP(const FString& WeaponAssetPath)
 	}
 
 	ServerEquipWeapon(Weapon);
+}
+
+void AMALPlayerController::MALLOCK(float DelaySeconds)
+{
+	if (!LockOnComponent)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALLOCK: the controller has no lock-on component."));
+		return;
+	}
+
+	if (DelaySeconds > 0.0f)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimer(DebugLockTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				MALLOCK();
+			}), DelaySeconds, false);
+		}
+
+		return;
+	}
+
+	LockOnComponent->ToggleLock();
+
+	const AActor* Target = LockOnComponent->GetLockedTarget();
+	UE_LOG(LogTemp, Log, TEXT("MALLOCK: %s"), Target ? *Target->GetName() : TEXT("no target"));
+}
+
+AActor* AMALPlayerController::GetLockedTarget() const
+{
+	return LockOnComponent ? LockOnComponent->GetLockedTarget() : nullptr;
+}
+
+void AMALPlayerController::MALDODGE()
+{
+	AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>();
+	UMALAbilitySystemComponent* MALASC = MALPS
+		? Cast<UMALAbilitySystemComponent>(MALPS->GetAbilitySystemComponent())
+		: nullptr;
+	UWorld* World = GetWorld();
+
+	if (!MALASC || !World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALDODGE: no ability system on the player state."));
+		return;
+	}
+
+	// Pressed then released on the next tick: ProcessAbilityInput needs a frame to turn the
+	// buffered press into an activation, and the release only clears the held state.
+	MALASC->AbilityInputTagPressed(UMALGameplayTags::Get()->Input_Dash, FInputActionValue());
+
+	World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+	{
+		AMALPlayerState* ReleasePlayerState = GetPlayerState<AMALPlayerState>();
+		UMALAbilitySystemComponent* ReleaseASC = ReleasePlayerState
+			? Cast<UMALAbilitySystemComponent>(ReleasePlayerState->GetAbilitySystemComponent())
+			: nullptr;
+
+		if (ReleaseASC)
+		{
+			ReleaseASC->AbilityInputTagReleased(UMALGameplayTags::Get()->Input_Dash, FInputActionValue());
+		}
+	}));
+
+	UE_LOG(LogTemp, Log, TEXT("MALDODGE: dash input sent."));
 }
 
 void AMALPlayerController::MALCAM()
