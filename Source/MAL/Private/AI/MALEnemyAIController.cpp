@@ -21,6 +21,7 @@
 #include "BehaviorTree/Tasks/BTTask_Wait.h"
 #include "BrainComponent.h"
 #include "Character/MALCharacterBase.h"
+#include "Character/MALEnemyCharacter.h"
 #include "Combat/MALCombatEvents.h"
 #include "Combat/MALCombatEventsSubsystem.h"
 #include "Components/MALAbilitySystemComponent.h"
@@ -109,8 +110,6 @@ AMALEnemyAIController::AMALEnemyAIController(const FObjectInitializer& ObjectIni
 	BrainComponent = CreateDefaultSubobject<UBehaviorTreeComponent>(TEXT("BehaviorTreeComponent"));
 	PerceptionComponent = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("PerceptionComponent"));
 	SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
-
-	AttackAbilityTag = UMALGameplayTags::Get()->Ability_Attack;
 }
 
 void AMALEnemyAIController::OnPossess(APawn* InPawn)
@@ -164,6 +163,7 @@ void AMALEnemyAIController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AMALEnemyAIController::ConfigurePerception()
 {
+
 	// A Blueprint that replaced the inherited component with one of its own leaves this member
 	// dangling, and every setting below would silently go nowhere. Look the component up by class
 	// instead of giving up on perception.
@@ -190,9 +190,9 @@ void AMALEnemyAIController::ConfigurePerception()
 		return;
 	}
 
-	SightConfig->SightRadius = SightRadius;
-	SightConfig->LoseSightRadius = FMath::Max(LoseSightRadius, SightRadius);
-	SightConfig->PeripheralVisionAngleDegrees = PeripheralVisionAngleDegrees;
+	SightConfig->SightRadius = GetSightRadius();
+	SightConfig->LoseSightRadius = FMath::Max(GetLoseSightRadius(), GetSightRadius());
+	SightConfig->PeripheralVisionAngleDegrees = GetPeripheralVisionAngleDegrees();
 	SightConfig->SetMaxAge(5.0f);
 	SightConfig->AutoSuccessRangeFromLastSeenLocation = -1.0f;
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
@@ -451,14 +451,15 @@ void AMALEnemyAIController::UpdateChase(AActor* Target)
 bool AMALEnemyAIController::PickPatrolPoint(FVector& OutPoint) const
 {
 	const APawn* MyPawn = GetPawn();
-	if (!MyPawn || PatrolRadius <= 0.0f)
+	const float EffectivePatrolRadius = GetPatrolRadius();
+	if (!MyPawn || EffectivePatrolRadius <= 0.0f)
 	{
 		return false;
 	}
 
 	// Stay inside 75% of the radius: a point on the boundary plus a path that overshoots slightly
 	// would slowly drag the enemy out of its area and leave it stranded there.
-	const float LegRadius = PatrolRadius * 0.75f;
+	const float LegRadius = EffectivePatrolRadius * 0.75f;
 
 	if (UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()))
 	{
@@ -503,10 +504,11 @@ bool AMALEnemyAIController::RequestMoveToActor(AActor* Goal)
 	}
 
 	EPathFollowingRequestResult::Type Result = EPathFollowingRequestResult::Failed;
+	const float StopRadius = GetChaseAcceptableRadius();
 
 	if (bUsePathfindingChase)
 	{
-		Result = MoveToActor(Goal, ChaseAcceptableRadius, /*bStopOnOverlap*/ true, /*bUsePathfinding*/ true,
+		Result = MoveToActor(Goal, StopRadius, /*bStopOnOverlap*/ true, /*bUsePathfinding*/ true,
 			/*bCanStrafe*/ false, nullptr, /*bAllowPartialPath*/ true);
 
 		if (Result == EPathFollowingRequestResult::Failed)
@@ -519,7 +521,7 @@ bool AMALEnemyAIController::RequestMoveToActor(AActor* Goal)
 
 	if (!bUsePathfindingChase)
 	{
-		Result = MoveToActor(Goal, ChaseAcceptableRadius, true, false, false, nullptr, true);
+		Result = MoveToActor(Goal, StopRadius, true, false, false, nullptr, true);
 	}
 
 	return Result != EPathFollowingRequestResult::Failed;
@@ -609,7 +611,7 @@ bool AMALEnemyAIController::IsWithinAttackRange(const APawn* MyPawn, const AActo
 		return false;
 	}
 
-	return FVector::Dist2D(MyPawn->GetActorLocation(), Target->GetActorLocation()) <= AttackRange;
+	return FVector::Dist2D(MyPawn->GetActorLocation(), Target->GetActorLocation()) <= GetAttackRange();
 }
 
 bool AMALEnemyAIController::ShouldSwitchTarget(AActor* CurrentTarget, AActor* NewTarget) const
@@ -659,6 +661,19 @@ UBlackboardData* AMALEnemyAIController::BuildRuntimeBlackboard()
 
 UBehaviorTree* AMALEnemyAIController::BuildRuntimeBehaviorTree()
 {
+	const AMALEnemyCharacter* Enemy = GetEnemyCharacter();
+
+	// Every value below belongs to the pawn: the tree is rebuilt per possession, which is the
+	// moment these per-enemy numbers are known.
+	const FGameplayTag AbilityTag = Enemy && Enemy->GetAttackAbilityTag().IsValid()
+		? Enemy->GetAttackAbilityTag()
+		: UMALGameplayTags::Get()->Ability_Attack;
+	const float EffectiveCooldown = Enemy ? Enemy->AttackCooldown : 1.5f;
+	const float EffectiveCooldownDeviation = Enemy ? Enemy->AttackCooldownDeviation : 0.4f;
+	const float EffectivePatrolAcceptableRadius = Enemy ? Enemy->PatrolAcceptableRadius : 60.0f;
+	const float EffectivePatrolPauseMin = Enemy ? Enemy->PatrolPauseMin : 1.0f;
+	const float EffectivePatrolPauseMax = Enemy ? Enemy->PatrolPauseMax : 3.0f;
+
 	UBehaviorTree* Tree = NewObject<UBehaviorTree>(this, TEXT("RuntimeBehaviorTree"));
 	UBlackboardData* BlackboardData = RuntimeBlackboard ? RuntimeBlackboard.Get() : BuildRuntimeBlackboard();
 	Tree->BlackboardAsset = BlackboardData;
@@ -674,8 +689,8 @@ UBehaviorTree* AMALEnemyAIController::BuildRuntimeBehaviorTree()
 
 	UBTTask_ActivateAbilityByTag* AttackTask = NewObject<UBTTask_ActivateAbilityByTag>(Tree, TEXT("AttackTask"));
 	AttackTask->NodeName = TEXT("Activate Attack");
-	AttackTask->AbilityTag = AttackAbilityTag;
-	AttackTask->AttackRange = AttackRange;
+	AttackTask->AbilityTag = AbilityTag;
+	AttackTask->AttackRange = GetAttackRange();
 	AttackTask->bFaceTarget = true;
 
 	FBTCompositeChild& AttackChild = AttackSequence->Children.AddDefaulted_GetRef();
@@ -683,8 +698,8 @@ UBehaviorTree* AMALEnemyAIController::BuildRuntimeBehaviorTree()
 
 	UBTTask_Wait* CooldownTask = NewObject<UBTTask_Wait>(Tree, TEXT("AttackCooldown"));
 	CooldownTask->NodeName = TEXT("Attack Cooldown");
-	CooldownTask->WaitTime = AttackCooldown;
-	CooldownTask->RandomDeviation = AttackCooldownDeviation;
+	CooldownTask->WaitTime = EffectiveCooldown;
+	CooldownTask->RandomDeviation = EffectiveCooldownDeviation;
 
 	FBTCompositeChild& CooldownChild = AttackSequence->Children.AddDefaulted_GetRef();
 	CooldownChild.ChildTask = CooldownTask;
@@ -705,15 +720,15 @@ UBehaviorTree* AMALEnemyAIController::BuildRuntimeBehaviorTree()
 
 	UBTTask_PatrolMoveTo* PatrolMove = NewObject<UBTTask_PatrolMoveTo>(Tree, TEXT("PatrolMove"));
 	PatrolMove->NodeName = TEXT("Patrol Move");
-	PatrolMove->AcceptableRadius = PatrolAcceptableRadius;
+	PatrolMove->AcceptableRadius = EffectivePatrolAcceptableRadius;
 
 	FBTCompositeChild& PatrolMoveChild = PatrolSequence->Children.AddDefaulted_GetRef();
 	PatrolMoveChild.ChildTask = PatrolMove;
 
 	UBTTask_Wait* PatrolPause = NewObject<UBTTask_Wait>(Tree, TEXT("PatrolPause"));
 	PatrolPause->NodeName = TEXT("Patrol Pause");
-	PatrolPause->WaitTime = (PatrolPauseMin + PatrolPauseMax) * 0.5f;
-	PatrolPause->RandomDeviation = FMath::Max(0.0f, (PatrolPauseMax - PatrolPauseMin) * 0.5f);
+	PatrolPause->WaitTime = (EffectivePatrolPauseMin + EffectivePatrolPauseMax) * 0.5f;
+	PatrolPause->RandomDeviation = FMath::Max(0.0f, (EffectivePatrolPauseMax - EffectivePatrolPauseMin) * 0.5f);
 
 	FBTCompositeChild& PatrolPauseChild = PatrolSequence->Children.AddDefaulted_GetRef();
 	PatrolPauseChild.ChildTask = PatrolPause;
@@ -734,11 +749,52 @@ UBehaviorTree* AMALEnemyAIController::BuildRuntimeBehaviorTree()
 	return Tree;
 }
 
+AMALEnemyCharacter* AMALEnemyAIController::GetEnemyCharacter() const
+{
+	return Cast<AMALEnemyCharacter>(GetPawn());
+}
+
+float AMALEnemyAIController::GetAttackRange() const
+{
+	const AMALEnemyCharacter* Enemy = GetEnemyCharacter();
+	return Enemy ? Enemy->AttackRange : 300.0f;
+}
+
+float AMALEnemyAIController::GetPatrolRadius() const
+{
+	const AMALEnemyCharacter* Enemy = GetEnemyCharacter();
+	return Enemy ? Enemy->PatrolRadius : 0.0f;
+}
+
+float AMALEnemyAIController::GetChaseAcceptableRadius() const
+{
+	const AMALEnemyCharacter* Enemy = GetEnemyCharacter();
+	return Enemy ? Enemy->ChaseAcceptableRadius : 180.0f;
+}
+
+float AMALEnemyAIController::GetSightRadius() const
+{
+	const AMALEnemyCharacter* Enemy = GetEnemyCharacter();
+	return Enemy ? Enemy->SightRadius : 2000.0f;
+}
+
+float AMALEnemyAIController::GetLoseSightRadius() const
+{
+	const AMALEnemyCharacter* Enemy = GetEnemyCharacter();
+	return Enemy ? Enemy->LoseSightRadius : 2500.0f;
+}
+
+float AMALEnemyAIController::GetPeripheralVisionAngleDegrees() const
+{
+	const AMALEnemyCharacter* Enemy = GetEnemyCharacter();
+	return Enemy ? Enemy->PeripheralVisionAngleDegrees : 90.0f;
+}
+
 AMALEnemyAIController::FMALAIDefaults AMALEnemyAIController::GetAssetDefaults()
 {
 	FMALAIDefaults Defaults;
 
-	if (const AMALEnemyAIController* CDO = GetDefault<AMALEnemyAIController>())
+	if (const AMALEnemyCharacter* CDO = GetDefault<AMALEnemyCharacter>())
 	{
 		Defaults.AttackRange = CDO->AttackRange;
 		Defaults.AttackCooldown = CDO->AttackCooldown;

@@ -7,6 +7,7 @@
 #include "AI/MALEnemyAIController.h"
 #include "AIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Tags/MALGameplayTags.h"
 #include "UI/Widgets/MALWorldWidgetComponent.h"
 
 AMALEnemyCharacter::AMALEnemyCharacter()
@@ -53,6 +54,10 @@ AMALEnemyCharacter::AMALEnemyCharacter()
 
 	// A cleared wave should not keep dead pawns replicating for the rest of the match.
 	CorpseLifeSpan = 8.0f;
+
+	// Behavior trees activate swings by tag; this is the default every melee enemy uses until a
+	// Blueprint overrides it for a different attack.
+	AttackAbilityTag = UMALGameplayTags::Get()->Ability_Attack;
 
 	// Character defaults to 100 Hz, but keep a floor so montage replication does not
 	// fall back to the low adaptive rate while the enemy is idle.

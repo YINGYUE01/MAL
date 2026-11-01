@@ -11,6 +11,7 @@
 class UAISenseConfig_Sight;
 class UBehaviorTree;
 class UBlackboardData;
+class AMALEnemyCharacter;
 struct FMALDamageResolvedEvent;
 
 /**
@@ -65,11 +66,13 @@ public:
 	bool IsAttacking() const;
 
 	/**
-	 * Range at which this enemy commits to a swing. Exposed so the BT task uses one source of
-	 * truth instead of its own serialized copy, which would silently disagree after an edit.
+	 * Range at which this enemy commits to a swing, read from the possessed pawn.
+	 *
+	 * Every enemy shares one controller class, so the value has to live on the pawn: a value
+	 * here would be one range for the whole roster.
 	 */
 	UFUNCTION(BlueprintPure, Category = "MAL|AI")
-	float GetAttackRange() const { return AttackRange; }
+	float GetAttackRange() const;
 
 	/**
 	 * Destination source for UBTTask_PickPatrolPoint: a random point around where the pawn was
@@ -90,11 +93,14 @@ public:
 	 */
 	bool IsPatrolMoveActive() const { return bPatrolMoveActive; }
 	bool IsUsingPathfindingChase() const { return bUsePathfindingChase; }
-	float GetPatrolRadius() const { return PatrolRadius; }
-	float GetChaseAcceptableRadius() const { return ChaseAcceptableRadius; }
-	float GetSightRadius() const { return SightRadius; }
-	float GetLoseSightRadius() const { return LoseSightRadius; }
-	float GetPeripheralVisionAngleDegrees() const { return PeripheralVisionAngleDegrees; }
+	float GetPatrolRadius() const;
+	float GetChaseAcceptableRadius() const;
+	float GetSightRadius() const;
+	float GetLoseSightRadius() const;
+	float GetPeripheralVisionAngleDegrees() const;
+
+	/** Possessed enemy, or null when this brain is not driving an AMALEnemyCharacter. */
+	AMALEnemyCharacter* GetEnemyCharacter() const;
 
 	/** Tuning the asset generator bakes into BT_StoneGolem, read from the class defaults. */
 	struct FMALAIDefaults
@@ -152,49 +158,6 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UAISenseConfig_Sight> SightConfig;
-
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Perception", meta = (ClampMin = "0.0"))
-	float SightRadius = 2000.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Perception", meta = (ClampMin = "0.0"))
-	float LoseSightRadius = 2500.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Perception", meta = (ClampMin = "0.0", ClampMax = "360.0"))
-	float PeripheralVisionAngleDegrees = 90.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Combat", meta = (ClampMin = "0.0"))
-	float AttackRange = 300.0f;
-
-	/** Stop distance handed to the path following component. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Combat", meta = (ClampMin = "0.0"))
-	float ChaseAcceptableRadius = 180.0f;
-
-	/** How far from where the pawn was possessed a patrol point may land. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Patrol", meta = (ClampMin = "0.0"))
-	float PatrolRadius = 900.0f;
-
-	/** Stop distance for a single patrol leg. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Patrol", meta = (ClampMin = "0.0"))
-	float PatrolAcceptableRadius = 60.0f;
-
-	/** Shortest pause between two patrol legs. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Patrol", meta = (ClampMin = "0.0"))
-	float PatrolPauseMin = 1.0f;
-
-	/** Longest pause between two patrol legs. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Patrol", meta = (ClampMin = "0.0"))
-	float PatrolPauseMax = 3.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Combat", meta = (ClampMin = "0.0"))
-	float AttackCooldown = 1.5f;
-
-	/** Random seconds added on top of AttackCooldown so a pack does not swing in lockstep. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Combat", meta = (ClampMin = "0.0"))
-	float AttackCooldownDeviation = 0.4f;
-
-	/** Ability tag the attack task activates. Defaults to MAL.Ability.Attack. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|AI|Combat")
-	FGameplayTag AttackAbilityTag;
 
 	/** Cleared permanently the first time a move request reports no navigation data. */
 	bool bUsePathfindingChase = true;
