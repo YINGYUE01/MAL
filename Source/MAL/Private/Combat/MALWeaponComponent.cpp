@@ -10,7 +10,6 @@
 #include "Components/BoxComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "Engine/OverlapResult.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Actor.h"
 #include "Net/UnrealNetwork.h"
@@ -269,11 +268,6 @@ void UMALWeaponComponent::StartHitWindow(int32 ComboStep, FName CollisionCompone
 	HitActors.Reset();
 	bHitWindowOpen = true;
 
-	UE_LOG(LogTemp, Log, TEXT("UMALWeaponComponent %s: hit window opened on '%s' (step %d), box at %s, owner at %s."),
-		*Owner->GetName(), *ResolvedName.ToString(), ComboStep,
-		*CollisionComponent->GetComponentLocation().ToCompactString(),
-		*Owner->GetActorLocation().ToCompactString());
-
 	// QueryOnly + Pawn overlap: the weapon volume never blocks the world, it only reports
 	// characters passing through it during the swing.
 	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -283,29 +277,6 @@ void UMALWeaponComponent::StartHitWindow(int32 ComboStep, FName CollisionCompone
 	CollisionComponent->SetGenerateOverlapEvents(true);
 
 	CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &UMALWeaponComponent::HandleOverlapBegin);
-
-	// Also resolve what is already inside the volume at the moment the window opens. Overlap
-	// events only report crossings: a target that was standing in the box before the window
-	// (or one the physics scene did not re-evaluate) would never produce a BeginOverlap, which
-	// reads as a swing that passes through a body without hurting it.
-	if (UWorld* World = Owner->GetWorld())
-	{
-		TArray<FOverlapResult> Overlapping;
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(MALHitWindowOpen), false, Owner);
-
-		World->OverlapMultiByChannel(Overlapping, CollisionComponent->GetComponentLocation(),
-			CollisionComponent->GetComponentQuat(), ECC_Pawn,
-			FCollisionShape::MakeBox(CollisionComponent->Bounds.BoxExtent), Params);
-
-		for (const FOverlapResult& Result : Overlapping)
-		{
-			AActor* OtherActor = Result.GetActor();
-			if (OtherActor && OtherActor != Owner)
-			{
-				HandleOverlapBegin(CollisionComponent, OtherActor, Result.GetComponent(), 0, false, FHitResult());
-			}
-		}
-	}
 }
 
 void UMALWeaponComponent::EndHitWindow()
@@ -529,10 +500,6 @@ void UMALWeaponComponent::HandleOverlapBegin(UPrimitiveComponent* OverlappedComp
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	AActor* Owner = GetOwner();
-
-	UE_LOG(LogTemp, Log, TEXT("Weapon overlap entry: %s vs %s (window %d)."),
-		*GetNameSafe(Owner), *GetNameSafe(OtherActor), bHitWindowOpen ? 1 : 0);
-
 	if (!bHitWindowOpen || !Owner || !Owner->HasAuthority())
 	{
 		return;
@@ -543,7 +510,7 @@ void UMALWeaponComponent::HandleOverlapBegin(UPrimitiveComponent* OverlappedComp
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("UMALWeaponComponent %s: overlap with %s during the hit window."),
+	UE_LOG(LogTemp, Verbose, TEXT("UMALWeaponComponent %s: overlap with %s during the hit window."),
 		*Owner->GetName(), *OtherActor->GetName());
 
 	// One hit per actor per swing. The set holds weak pointers, so a target destroyed

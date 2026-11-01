@@ -102,10 +102,6 @@ public:
 	UFUNCTION(Exec)
 	void MALSPAWN(const FString& ClassPath, float Distance = 500.0f);
 
-	/** Debug: print player health and the collision responses involved in enemy hits. */
-	UFUNCTION(Exec)
-	void MALCOMBATINFO(float DelaySeconds = 0.0f);
-
 	/** Target the camera is currently locked onto, or null. */
 	UFUNCTION(BlueprintPure, Category = "MAL|LockOn")
 	AActor* GetLockedTarget() const;
@@ -254,9 +250,6 @@ private:
 
 	/** Pending delayed MALLOCK toggle; a handle cannot be a temporary for FTimerManager. */
 	FTimerHandle DebugLockTimer;
-
-	/** Pending delayed MALCOMBATINFO dump. */
-	FTimerHandle DebugInfoTimer;
 
 	FDelegateHandle WeaponChangedDelegateHandle;
 
