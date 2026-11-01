@@ -9,12 +9,12 @@
 
 ## 1. 一句话定位
 
-**第三人称动作角色扮演（ARPG）战斗原型**：以 GAS 为骨架，围绕「武器决定技能」这一核心设计，做出近战连招、蓄力射箭、命中手感（hit-stop / 镜头抖动 / 飘字）、属性点与技能树成长、以及基于行为树的怪物 AI 的完整可玩闭环。
+**第三人称动作角色扮演（ARPG）战斗原型**：以 GAS 为骨架，围绕「武器决定技能」这一核心设计，做出近战连招、命中手感（hit-stop / 镜头抖动 / 飘字）、属性点与技能树成长、以及基于行为树的怪物 AI 的完整可玩闭环。
 
 | 维度 | 结论 |
 | --- | --- |
-| 视角 / 移动 | 第三人称，Character + SpringArm + Camera，支持瞄准姿态（strafe + 镜头拉近） |
-| 战斗 | 近战连招（蒙太奇驱动命中窗口）+ 远程蓄力射击（弹道投射物）+ 自增益 Buff + 旋风斩类范围技能 |
+| 视角 / 移动 | 第三人称，Character + SpringArm + Camera |
+| 战斗 | 近战连招（蒙太奇驱动命中窗口）+ 自增益 Buff + 旋风斩类范围技能 |
 | 成长 | 经验/等级 → 属性点（5 项主属性）+ 技能点（按武器购买技能树节点） |
 | 敌人 | Stone Golem 类怪物：感知 → 追击 → 技能 → 巡逻，掉落经验给击杀者 |
 | 界面 | UMG + MVVM：HUD（血条/蓝条/技能条）、属性面板、技能树面板、敌人血条、伤害飘字 |
@@ -96,7 +96,7 @@
 | `Combat` | 9/7 | 命中窗口、武器、伤害、弹道、事件总线 | `UMALWeaponComponent`、`UMALWeaponDefinition`、`UMALComboComponent`、`UMALDamageExecutor`、`UMALHitFeedbackComponent`、`AMALProjectile`、`UMALCombatEventsSubsystem`、`FMALHitResult` |
 | `Components` | 2/2 | 自定义 ASC 与成长组件 | `UMALAbilitySystemComponent`、`UMALProgressionComponent` |
 | `Data` | 3/3 | 职业 / 技能池 / 能力集数据资产 | `UMALClassDefinition`、`UMALSkillTreeDefinition`、`UMALAbilitySet` |
-| `GameAbilities` | 12/12 | GA 基类与具体技能、GE、Cue、震屏 | `UMALGameplayAbility`、`UMALAbility_MeleeAttack`、`_Attack`、`_BowShot`、`_Buff`、`_StoneGolemAttack`、`UMALDamageGameplayEffect`、`_CooldownGameplayEffect`、`_ManaCostGameplayEffect`、`_BuffGameplayEffect`、`AMALGameplayCueNotify_Buff`、`UMALHitCameraShake` |
+| `GameAbilities` | 11/11 | GA 基类与具体技能、GE、Cue、震屏 | `UMALGameplayAbility`、`UMALAbility_MeleeAttack`、`_Attack`、`_Buff`、`_StoneGolemAttack`、`UMALDamageGameplayEffect`、`_CooldownGameplayEffect`、`_ManaCostGameplayEffect`、`_BuffGameplayEffect`、`AMALGameplayCueNotify_Buff`、`UMALHitCameraShake` |
 | `GameModes` | 1/1 | GameMode 默认类绑定 | `AMALGameMode : AGameModeBase`（构造里固定 Pawn/PC/PS 为 MAL 版本） |
 | `Input` | 2/2 | 增强输入配置与带 Tag 的事件转发 | `UMALInputConfig`、`UMALInputComponent`（`FMALInputActionEvent` 三参委托，携带 `ETriggerEvent`） |
 | `Interfaces` | 1/1 | 蒙太奇通知 ↔ 技能通信契约 | `IMALComboAttackInterface`（不可蓝图实现） |
@@ -105,7 +105,7 @@
 | `Tags` | 1/1 | 原生 GameplayTag 单例 | `UMALGameplayTags` |
 | `UI` | 23/22 | 子系统 / ViewModel / Widget 三层 | `UMALUISubsystem`、`UMALDamageNumberSubsystem`、`FMALRetryPoll`、9 个 ViewModel、11 个 Widget、`UMALWorldWidgetComponent` |
 | `Private/Debug` | — | GameplayDebugger 自定义页 `MAL.AI`（槽位 6） | `FMALGameplayDebuggerCategory` |
-| `Private/Editor` | 5 | 资产自动化 commandlet | `MALBowSetup`、`MALLocomotionLayerSetup`、`MALUpperBodyLayerSetup`、`MALUpperBodyVerify`、`MALGenerateAIAssets` |
+| `Private/Editor` | 2 | 资产自动化 commandlet | `MALLocomotionLayerSetup`、`MALGenerateAIAssets` |
 
 ---
 
@@ -241,12 +241,12 @@ Selector
 
 | 目录 | 内容 |
 | --- | --- |
-| `Characters/MALCharacter` | `BP_MALCharacter`、`ABP_MALCharacter`、连招/攻击/Buff 蒙太奇（`AM_*`）、`ANS_MALMotionWarp`；`Locomotion/ABP_Locomotion_{Unarmed,Sword,Bow,Scythe}` + `ABP_LocomotionLayerInterface` + `BS_Bow_Move` |
+| `Characters/MALCharacter` | `BP_MALCharacter`、`ABP_MALCharacter`、连招/攻击/Buff 蒙太奇（`AM_*`）、`ANS_MALMotionWarp`；`Locomotion/ABP_Locomotion_{Unarmed,Sword,Scythe}` + `ABP_LocomotionLayerInterface` |
 | `Characters/EnemyCharacter` | `BP_StoneGolem` |
-| `GameAbilitySyste/Ability` | `GA_Combo1Ability`、`GA_Combo2Ability`、`GA_WhirlwindAbility`、`GA_BuffAbility`；`Archer/GA_BowShotAbility` + `AM_ShotMontage`；`Scythe/GA_Scythe_{Ability,Combo1}` + 对应蒙太奇；`GE_ComboAttackDamage` |
+| `GameAbilitySyste/Ability` | `GA_Combo1Ability`、`GA_Combo2Ability`、`GA_WhirlwindAbility`、`GA_BuffAbility`；`Scythe/GA_Scythe_{Ability,Combo1}` + 对应蒙太奇；`GE_ComboAttackDamage` |
 | `GameAbilitySyste/GameEffect` | `GE_{Primary,Secondary,Standalone}Attribute`、`GE_Buff_DamageUp`、`GE_BuffCost`、`GE_Cooldown_{Attack,Buff,Combo2,Whirlwind}` |
 | `GameAbilitySyste/GameplayCue` | `GCN_Buff_DamageUp`、`GCN_Hit_Impact`、`GCN_Character_LevelUp` |
-| `GameAbilitySyste/Weapons` | 7 把武器定义 `DA_Weapon_{Axe,Bow,Dagger,Hammer,Scythe,Spear,Sword}` + 7 个武器能力集 `DA_AbilitySet_*` + 6 个技能树 `DA_SkillTree_*`（无 Bow，共 20 个资产；**工作区新路径**） |
+| `GameAbilitySyste/Weapons` | 6 把武器定义 `DA_Weapon_{Axe,Dagger,Hammer,Scythe,Spear,Sword}` + 6 个武器能力集 `DA_AbilitySet_*` + 6 个技能树 `DA_SkillTree_*`（共 18 个资产；**工作区新路径**） |
 | `GameAbilitySyste/Data` | `DA_Warrior`（职业定义）、`CT_Experience`、`CT_LevelGrowth` |
 | `AI` | `BT_StoneGolem`、`BB_StoneGolem`、`BP_StoneGolemAIController`、`GA_StoneGolemAttack`、`DA_StoneGolem{,AbilitySet}`、`AM_StoneGolemAttack_Seq`、`BP_AISpawner` |
 | `Input` | `IMC_InputContext`、`DA_InputConfig`、12 个 `IA_*`（含 `IA_WeaponNext/Prev`、`IA_AttributeMenu/SkillMenu`、`IA_LockOnAction`） |
@@ -263,7 +263,7 @@ Selector
 | `MythicalWeapons`、`FantasyWeapons`、`HeavyHammer` | 武器网格与材质 | 540 / 175 / 199 |
 | `VFX`、`SlashTrailElemental`、`Free_Spells`、`ImpactEffects` | 拖尾、命中特效、法术 | 398 / 335 / 98 / 175 |
 | `StoneGolem` | 怪物网格/动画 | 265 |
-| `Frank_RPG_Archer` | 弓箭手动作集（蓄力射击重定向来源） | 268 |
+| `Frank_RPG_Archer` | 弓箭手动作集（原玩家弓资源，目前未使用） | 268 |
 | `ArashiAkuma`、`FullMountAttacks` | 额外角色/动作素材 | 367 / 51 |
 | `Sound/*`、`Sword Combat Powerful`、`Sword Fighting Ultimate SFX` | 挥砍/命中/战斗音乐采样 | 149 + 208 |
 
@@ -292,15 +292,12 @@ Selector
 
 | Commandlet | 作用 |
 | --- | --- |
-| `-run=MALBowSetup -Mode=dump\|apply` | 生成并接线 `GA_BowShotAbility`、`DA_AbilitySet_Bow`、`DA_Weapon_Bow` 的远程字段 |
 | `-run=MALLocomotionLayerSetup -Mode=dump\|apply\|compile` | 创建 `ABP_Locomotion_*`、搭图层函数图、把地面状态机换成 Layer 节点、插入 Inertialization、把武器定义指向图层 |
-| `-run=MALUpperBodyLayerSetup` | 把射箭拆成「上半身蒙太奇 + 下半身仅移动」，瞄准时走速度/方向 BlendSpace |
-| `-run=MALUpperBodyVerify` | 无 viewport 证明上下半身拆分成立（三种姿势对拍；注意 `-nullrhi` 下动画图不会被自动求值） |
 | `-run=MALGenerateAIAssets` | 一次性写出 Stone Golem 的 Blackboard 与 Behavior Tree |
 
 ### 7.3 运行时调试钩子
 
-- 控制台 Exec（`AMALPlayerController`）：`MALAddAttributePoints`、`MALSpendAttributePoint`、`MALEQUIP <资产路径>`、`MALFIRE <蓄力秒> <发数>`、`MALCAM`。`MALFIRE` 走与鼠标完全相同的缓冲路径，因此可在无头运行里验证充能射击。
+- 控制台 Exec（`AMALPlayerController`）：`MALAddAttributePoints`、`MALSpendAttributePoint`、`MALEQUIP <资产路径>`、`MALCAM`。
 - GameplayDebugger：自定义页 `MAL.AI`，固定小键盘槽位 6（0–5 已被引擎页占用），默认状态已设为 `EnabledInGameAndSimulate`；整页包在 `WITH_GAMEPLAY_DEBUGGER` 内，Shipping 自动编掉。
 
 ### 7.4 AI 代理接入
@@ -314,12 +311,12 @@ Selector
 ### 8.1 开发轨迹（31 次提交，2026-10-21 → 10-30）
 
 主题演进清晰，可作为功能落地顺序的参考：
-GAS 骨架与 Character 重构 → 命中停顿/镜头抖动 → 血条与伤害飘字 → 死亡/Buff 技能 → 连招与后摇 → 音效与字体 → 技能框架重构 → 属性面板与加点 → UI 架构重构 → 技能菜单 → 武器切换（滚轮 + 技能由武器决定 + UI 同步修复）→ 按武器切换动画 → 射击技能（弓）。
+GAS 骨架与 Character 重构 → 命中停顿/镜头抖动 → 血条与伤害飘字 → 死亡/Buff 技能 → 连招与后摇 → 音效与字体 → 技能框架重构 → 属性面板与加点 → UI 架构重构 → 技能菜单 → 武器切换（滚轮 + 技能由武器决定 + UI 同步修复）→ 按武器切换动画 → 射击技能（弓）→ 移除弓与上下半身分层。
 
 ### 8.2 工作区未提交改动（截至快照）
 
 - `12` 个 M、`260` 个 D、`10` 个 ??：**武器数据资产整体搬迁** `Content/Blueprint/Data/Weapons/**` → `Content/Blueprint/GameAbilitySyste/Weapons/**`；同时删除了 `Content/Frank_RPG_Sword1/**` 全部动画资产。
-- 新增未跟踪：镰刀技能组（`Ability/Scythe/**`、`ABP_Locomotion_Scythe`、`BS_Bow_Move`）、`GrruzamSwordPack/`、以及 `MALUpperBodyLayerSetup.*` 与 `MALUpperBodyVerify.*` 两个 commandlet（**尚未纳入构建脚本验证**）。
+- 新增未跟踪：镰刀技能组（`Ability/Scythe/**`、`ABP_Locomotion_Scythe`、`BS_Bow_Move`）、`GrruzamSwordPack/`。
 - 存在两条备份分支：`backup/skill-menu-wip-c504277`、`backup/wip-before-reset-b5fbd80`。
 - ⚠️ LFS 项目下做资产回退/删除前必须先确认对应对象可取回；历史上已确立「破坏性 git 操作前先建备份分支」的约束。
 

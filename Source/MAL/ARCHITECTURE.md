@@ -132,7 +132,7 @@ UMALSkillTreeDefinition │  · 已购买技能节点                          �
                         └────────────────────────────────────────────┘
                         ┌────────────────────────────────────────────┐
 UMALWeaponDefinition ──▶│ SourceKey = WeaponAbilitySourceKey          │
-  .GrantedAbilitySets   │  · 这把武器自带的挥砍/射击能力              │
+  .GrantedAbilitySets   │  · 这把武器自带的挥砍能力              │
                         │ 重建者：RefreshWeaponGrantedAbilities()     │
                         └────────────────────────────────────────────┘
 ```
@@ -164,17 +164,17 @@ EnhancedInput 触发 ──▶ UMALInputComponent：把 (InputTag, Value, ETrigg
                               （技能内可用 GetLastInputValue(Tag) 取回触发时的值）
 ```
 
-两条策略（`EMALAbilityActivationPolicy`）：`OnInputTriggered`（按下即启）与 `WhileInputActive`（按住期间有效，松手由 ASC 取消，除非技能在 `InputReleased` 里自己收尾——蓄力弓走这条）。
+两条策略（`EMALAbilityActivationPolicy`）：`OnInputTriggered`（按下即启）与 `WhileInputActive`（按住期间有效，松手由 ASC 取消，除非技能在 `InputReleased` 里自己收尾）。
 
 ### 5.3 Tag 契约表
 
 | 前缀 | 例 | 谁写 | 谁读 | 破坏后果 |
 | --- | --- | --- | --- | --- |
 | `MAL.Input.*` | `Input.LMB`、`Input.RMB`、`Input.F`、`Input.WeaponNext` | `UMALInputConfig` 映射 | ASC 缓冲、技能 `InputActivatedTag` | 技能被授予但无按键能触发 |
-| `MAL.Ability.*` | `Ability.Attack`、`Ability.BowShot` | 资产 `AbilityTags` | AI 的 `BTTask_ActivateAbilityByTag` | 行为树唤不出技能 |
-| `MAL.Status.*` | `Attacking`、`Casting`、`Aiming`、`Dead` | `ConfigureAbility()` 写进 OwnedTags | PC 吞输入、其他技能 `ActivationBlockedTags`、动画 | 重激活阻断失效 / 移动锁死 |
+| `MAL.Ability.*` | `Ability.Attack` | 资产 `AbilityTags` | AI 的 `BTTask_ActivateAbilityByTag` | 行为树唤不出技能 |
+| `MAL.Status.*` | `Attacking`、`Casting`、`Dead` | `ConfigureAbility()` 写进 OwnedTags | PC 吞输入、其他技能 `ActivationBlockedTags`、动画 | 重激活阻断失效 / 移动锁死 |
 | `MAL.Cooldown.*` | `Cooldown.Attack`、`Cooldown.Whirlwind` | 冷却 GE 授予 | HUD 调 `GetCooldownTimeRemaining` | **冷却条永远不动**（引擎从 owner 的 tag 反查冷却） |
-| `MAL.Weapon.*` | `Weapon.Sword`、`Weapon.Bow` | `WeaponDefinition.WeaponTag` | 技能树节点门禁 | 技能池与武器对不上 |
+| `MAL.Weapon.*` | `Weapon.Sword` | `WeaponDefinition.WeaponTag` | 技能树节点门禁 | 技能池与武器对不上 |
 | `MAL.Data.*` | `Data.Damage`、`Data.DamageBonus` | `SetByCaller` | Execution / GE | 伤害恒为 0 |
 | `MAL.Damage.Type.Magic` | — | GE 的 asset/dynamic tag | `UMALDamageExecutionCalculation` | 走错攻防通道 |
 | `MAL.Event.*` | `Event.Hit`、`Event.WeaponHit` | Notify / Executor 发 GameplayEvent | 蓝图 `WaitGameplayEvent` | 事件驱动技能收不到帧 |
@@ -245,10 +245,9 @@ FMALUnlockedSkill { WeaponTag, SkillTag }   ← 存档与进度组件持有的�
 `UMALHitFeedbackComponent` **只置 `USkeletalMeshComponent::bNoSkeletonUpdate` 冻结姿势**，不动 `CustomTimeDilation`：后者会连 CharacterMovement 与 ServerMove 一起停住，别的客户端会看到攻击者抽搐。副作用是蒙太奇时间轴也会停，于是 `UMALAnimInstance::AdvanceMontagesOnly()` 手动推进蒙太奇并触发 notify —— **姿势冻住，机制时钟继续按权威走**。
 `NM_ListenServer` / `NM_DedicatedServer` 直接 return，host 只保留震屏（纯表现）。
 
-### 6.2 远程分支
+### 6.2 远程分支（已移除）
 
-`UMALAbility_BowShot` 是唯一非近战技能形态：`WhileInputActive` + 蓄力档位数组（`FMALBowChargeTier{ChargeTime, DamageScale, ...}`）+ 瞄准姿态（`Status.Aiming` 由激活 tag 持有，与姿态同生命周期）+ `AMALProjectile`。
-投射物伤害同样落到 `UMALDamageExecutor`：友军/尸体/免疫 tag 的过滤规则只在执行器里存在一份。弓箭的**瞄准线来自相机、发射点来自武器 socket**（`GetWeaponMuzzleTransform`），两者一致才不会「准星在敌人身上却打墙」。
+玩家弓与其射击技能已从项目中移除，`AMALProjectile` 与 `UMALWeaponDefinition::ProjectileClass` 等通用弹道基础设施保留，供未来的远程/投掷类技能复用；`UMALDamageExecutor` 的友军/尸体/免疫过滤仍然适用于任何来源的命中。
 
 ---
 
@@ -256,21 +255,19 @@ FMALUnlockedSkill { WeaponTag, SkillTag }   ← 存档与进度组件持有的�
 
 ```
 ABP_MALCharacter : UMALAnimInstance ──────────┐  C++ 只喂数据：Speed/Direction/VelocityZ/
-   │                                          │  bIsInAir/bHasMovementInput/bIsAiming/
-   ├─ Ground 状态机 ──▶ Linked Anim Layer 节点 ◀┤  AimOffset，不参与选段
+   │                                          │  bIsInAir/bHasMovementInput/AimOffset，
+   ├─ Ground 状态机 ──▶ Linked Anim Layer 节点 ◀┤  不参与选段
    │                       ▲                  │
-   │       ABP_Locomotion_Unarmed / _Sword / _Bow / _Scythe
+   │       ABP_Locomotion_Unarmed / _Sword / _Scythe
    │            （由 UMALWeaponDefinition.LocomotionLayer 指定，
    │              OnEquippedWeaponChanged 在每台机器上重链）
    │
    └─ Montage 槽位
           全身槽 DefaultSlot      ← 近战蒙太奇（姿势整段归蒙太奇）
-          上半身槽 UpperBody       ← 射箭蒙太奇（下半身仍归 locomotion 层）
 ```
 
 * **换武器不换 ABP**：用 Linked Anim Layer 而非 `SetAnimInstanceClass`，主图不动、每武器一个层资产，`LinkAnimClassLayers` 失败时按 tick 重试至多 30 次（约半秒，长于一次 hit-stop，短到能大声失败）。
 * **无装备时的兜底**：`DefaultLocomotionLayer` 必须给一个合法层，否则 Layer 节点解析为空 → 参考姿势（T-pose）。
-* **弓层的下半身分支**：`ABP_Locomotion_Bow` 读 `bIsAiming` 决定走「速度/方向 BlendSpace（侧身瞄射）」还是「朝前位移序列」—— 拿着弓不等于正在射。
 * Notify 是帧与机制之间唯一的通信方式（见 §4 第 3 条）。**时序约束**：`ComboWindow` notify 必须早于 hit window，否则最后一段接不上。
 * 角色网格自带剑（Paragon Kwang 的 `M05_Weapon` 材质槽刚性绑在 `weapon_r`），所以武器定义带 `bHideBuiltInWeapon`：带自己网格的武器必须让内置剑隐形，换皮武器则保持可见。
 
@@ -388,7 +385,7 @@ Progression(Level, Experience, ExperienceToNextLevel, AttributePoints, SkillPoin
 
 ### 12.2 加一个新技能
 
-1. 决定父类：单段挥砍 → `UMALAbility_MeleeAttack`；多段连招 → `UMALAbility_Attack`；增益 → `UMALAbility_Buff`；投射物 → 参照 `UMALAbility_BowShot`。
+1. 决定父类：单段挥砍 → `UMALAbility_MeleeAttack`；多段连招 → `UMALAbility_Attack`；增益 → `UMALAbility_Buff`；投射物 → 直接复用 `AMALProjectile`（当前无现成远程技能可参照）。
 2. 构造函数里 `ConfigureAbility(AbilityTag, InputTag, StatusTag)` —— 三件事一起，别只填 AbilityTag。
 3. 若要自定义伤害字段，重写 `BuildHitRequest()`，**不要复制 `OnWeaponHit`**。
 4. 蒙太奇与段名留在武器定义上，能力里只留兜底值。
@@ -450,7 +447,7 @@ Meta：加在 `UMALAttributeSet` 但**不注册复制**，在 `PostGameplayEffec
 5. **冷却/耗时数值散在资产里**：`GE_Cooldown_Attack` 与蒙太奇长度必须满足「冷却不长于动作」，否则出现输入黑洞；目前没有任何代码或工具校验这条关系。
 6. **`UMALCombatEventsSubsystem` 与 `UMALAttributeSet` 直接耦合**（后者发布事件），总线的订阅方因此只能来自属性层；若以后要支持非 GAS 来源的伤害（陷阱、剧情），需要一个显式的发布入口。
 7. **AI 追击在 Tick、巡逻在树**：职责清楚但排查时要同时看两处；追击与 `PatrolMoveTo` 的互斥靠「有目标时任务失败」这一约定维持，没有断言。
-8. **回归只能靠编译 + 手工 PIE**：零自动化测试。commandlet 的 `dump`/`verify` 模式是目前唯一可脚本化的检查面（`MALUpperBodyVerify` 是唯一样本），值得把「武器段名 vs 蒙太奇段名」「tag 是否被路由」这类一致性检查也做成同类 verify。
+8. **回归只能靠编译 + 手工 PIE**：零自动化测试。commandlet 的 `dump`/`verify` 模式是目前唯一可脚本化的检查面（`MALLocomotionLayerSetup` 的 dump 是唯一样本），值得把「武器段名 vs 蒙太奇段名」「tag 是否被路由」这类一致性检查也做成同类 verify。
 
 ---
 

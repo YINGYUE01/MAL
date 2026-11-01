@@ -551,64 +551,6 @@ void AMALPlayerController::MALEQUIP(const FString& WeaponAssetPath)
 	ServerEquipWeapon(Weapon);
 }
 
-void AMALPlayerController::MALFIRE(float ChargeSeconds, int32 Shots)
-{
-	AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>();
-	UMALAbilitySystemComponent* MALASC = MALPS ? Cast<UMALAbilitySystemComponent>(MALPS->GetAbilitySystemComponent()) : nullptr;
-	if (!MALASC)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("MALFIRE: no ability system on the player state."));
-		return;
-	}
-
-	DebugFireChargeSeconds = FMath::Max(ChargeSeconds, 0.0f);
-	DebugFireShotsLeft = FMath::Max(Shots, 1);
-
-	UE_LOG(LogTemp, Log, TEXT("MALFIRE: holding LMB for %.2fs, %d shot(s)."), DebugFireChargeSeconds, DebugFireShotsLeft);
-	BeginDebugFire();
-}
-
-void AMALPlayerController::BeginDebugFire()
-{
-	AMALPlayerState* MALPS = GetPlayerState<AMALPlayerState>();
-	UMALAbilitySystemComponent* MALASC = MALPS ? Cast<UMALAbilitySystemComponent>(MALPS->GetAbilitySystemComponent()) : nullptr;
-	UWorld* World = GetWorld();
-	if (!MALASC || !World)
-	{
-		return;
-	}
-
-	// Buffered like a mouse press: ProcessAbilityInput turns it into the ability's activation on
-	// the next frame, so the ability has entered its aim phase by the time the release lands.
-	MALASC->AbilityInputTagPressed(UMALGameplayTags::Get()->Input_LMB, FInputActionValue());
-
-	World->GetTimerManager().SetTimer(DebugFireReleaseTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
-	{
-		AMALPlayerState* ReleasePlayerState = GetPlayerState<AMALPlayerState>();
-		UMALAbilitySystemComponent* ReleaseASC = ReleasePlayerState
-			? Cast<UMALAbilitySystemComponent>(ReleasePlayerState->GetAbilitySystemComponent())
-			: nullptr;
-
-		if (ReleaseASC)
-		{
-			ReleaseASC->AbilityInputTagReleased(UMALGameplayTags::Get()->Input_LMB, FInputActionValue());
-		}
-
-		if (--DebugFireShotsLeft <= 0)
-		{
-			return;
-		}
-
-		// A pause between shots: the ability owns Status.Aiming until it ends, and its own
-		// recover timer is what removes it, so pressing sooner would be refused.
-		if (UWorld* NextWorld = GetWorld())
-		{
-			NextWorld->GetTimerManager().SetTimer(DebugFireReleaseTimer,
-				FTimerDelegate::CreateWeakLambda(this, [this]() { BeginDebugFire(); }), 0.4f, false);
-		}
-	}), DebugFireChargeSeconds, false);
-}
-
 void AMALPlayerController::MALCAM()
 {
 	FVector ViewLocation = FVector::ZeroVector;
