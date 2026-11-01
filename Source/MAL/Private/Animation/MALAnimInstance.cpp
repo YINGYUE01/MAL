@@ -28,6 +28,10 @@ void UMALAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	UpdateMovementData();
 	UpdateAimOffset();
+
+	// Read on every linked instance too, which is what lets the weapon layers branch on the stance
+	// without reaching into the host instance.
+	bIsAiming = CachedCharacter->IsAiming();
 }
 
 void UMALAnimInstance::AdvanceMontagesOnly(float DeltaSeconds)

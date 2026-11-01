@@ -55,6 +55,15 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Locomotion")
 	EMALLocomotionState LocomotionState = EMALLocomotionState::Idle;
 
+	/**
+	 * The character is in its aiming stance (the ranged ability is active).
+	 *
+	 * The bow layer branches its lower body on this: the directional aim set only applies while
+	 * aiming, because a character who is merely carrying a bow walks and runs like anyone else.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Locomotion")
+	bool bIsAiming = false;
+
 	// ---- Thresholds ----
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Locomotion|Thresholds")

@@ -46,6 +46,9 @@ public class MAL : ModuleRules
 				"Kismet",
 				"BlueprintGraph",
 				"AnimGraph",
+				// The upper body setup commandlet reads the baked node structs off the compiled anim
+				// class, which needs the runtime struct constructors of AnimGraphRuntime.
+				"AnimGraphRuntime",
 				"AssetTools"
 			});
 		}
