@@ -48,6 +48,15 @@ public:
 	/** Launch along the actor's forward axis at InSpeed. Zero or less keeps the class default. */
 	void SetLaunchSpeed(float InSpeed);
 
+	/**
+	 * Launch along an explicit world direction.
+	 *
+	 * Firing with a direction rather than the actor's forward axis is what makes an aimed shot
+	 * actually aimed: the spawn rotation can be corrected after the fact, but a velocity built
+	 * from a stale forward vector keeps flying the old way.
+	 */
+	void LaunchTowardDirection(const FVector& InDirection, float InSpeed);
+
 	/** Mesh drawn for this arrow, plus its offset from the root (facing and scale). */
 	void SetArrowVisual(UStaticMesh* InMesh, const FTransform& InOffset);
 
@@ -58,6 +67,20 @@ protected:
 	UFUNCTION()
 	void HandleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+	/**
+	 * Overlap result, bound on the authority only.
+	 *
+	 * A target whose capsule answers the projectile with Overlap (the character capsule does,
+	 * so melee volumes can report hits) never produces a blocking hit, and OnComponentHit would
+	 * never fire. Without this the arrow flies straight through the player.
+	 */
+	UFUNCTION()
+	void HandleBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	/** Resolve damage against a body. Returns true when the projectile should stop. */
+	bool ResolveHit(AActor* OtherActor, const FVector& ImpactPoint);
 
 	/** Sphere that sweeps the world. Small: an arrow hits what it visually touches. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Projectile")

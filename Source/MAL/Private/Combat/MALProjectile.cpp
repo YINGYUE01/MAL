@@ -38,6 +38,7 @@ AMALProjectile::AMALProjectile()
 	CollisionComponent->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
 	CollisionComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 	CollisionComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	CollisionComponent->SetGenerateOverlapEvents(true);
 	// OnComponentHit only fires for swept movement when the component is told to report hits;
 	// without this the arrow would pass through everything and rely on its lifetime to die.
 	CollisionComponent->SetNotifyRigidBodyCollision(true);
@@ -55,6 +56,10 @@ AMALProjectile::AMALProjectile()
 	ProjectileMovement->ProjectileGravityScale = 0.0f;
 	ProjectileMovement->InitialSpeed = DefaultArrowSpeed;
 	ProjectileMovement->MaxSpeed = DefaultArrowSpeed;
+	// Launch direction is set in world space by SetLaunchSpeed; leaving the component in
+	// local-space mode would make a zero initial velocity stay zero no matter what is assigned.
+	ProjectileMovement->bInitialVelocityInLocalSpace = false;
+	ProjectileMovement->bAutoActivate = true;
 	ProjectileMovement->SetIsReplicated(true);
 }
 
@@ -70,16 +75,55 @@ void AMALProjectile::InitializeProjectile(const FMALWeaponHitRequest& InDamageRe
 
 void AMALProjectile::SetLaunchSpeed(float InSpeed)
 {
-	if (!ProjectileMovement || InSpeed <= 0.0f)
+	LaunchTowardDirection(GetActorForwardVector(), InSpeed);
+}
+
+void AMALProjectile::LaunchTowardDirection(const FVector& InDirection, float InSpeed)
+{
+	if (!ProjectileMovement || !CollisionComponent)
 	{
 		return;
 	}
 
+	// A blueprint that left InitialSpeed at zero, or an ability that passed zero, used to leave
+	// the arrow standing still: the movement component had no velocity and nothing else ever
+	// set one. Fall back until a real number is available.
+	float Speed = InSpeed;
+	if (Speed <= 0.0f)
+	{
+		Speed = ProjectileMovement->InitialSpeed > 0.0f ? ProjectileMovement->InitialSpeed : DefaultArrowSpeed;
+	}
+
+	FVector Direction = InDirection.GetSafeNormal();
+	if (Direction.IsNearlyZero())
+	{
+		Direction = GetActorForwardVector().GetSafeNormal();
+	}
+	if (Direction.IsNearlyZero())
+	{
+		Direction = FVector::ForwardVector;
+	}
+
+	// Point the body along the shot as well: the visual mesh is attached to it, so a velocity
+	// that disagrees with the actor rotation draws an arrow flying sideways.
+	SetActorRotation(Direction.Rotation());
+
+	// Re-arm the movement component: a disabled or unregistered projectile (spawned after a
+	// pool reset, or with Auto Activate cleared in the blueprint) ticks nothing and sits there.
+	ProjectileMovement->SetUpdatedComponent(CollisionComponent);
+	ProjectileMovement->bSimulationEnabled = true;
+	ProjectileMovement->Activate(true);
+
 	// Both values, because InitialSpeed is only read while the movement component starts up and
 	// the velocity is what actually moves the arrow from here on.
-	ProjectileMovement->InitialSpeed = InSpeed;
-	ProjectileMovement->MaxSpeed = InSpeed;
-	ProjectileMovement->Velocity = GetActorForwardVector() * InSpeed;
+	ProjectileMovement->InitialSpeed = Speed;
+	ProjectileMovement->MaxSpeed = Speed;
+	ProjectileMovement->bInitialVelocityInLocalSpace = false;
+	ProjectileMovement->Velocity = Direction * Speed;
+	ProjectileMovement->UpdateComponentVelocity();
+
+	UE_LOG(LogTemp, Verbose, TEXT("%s: launched at %.0f cm/s toward %s."),
+		*GetName(), Speed, *Direction.ToCompactString());
 }
 
 void AMALProjectile::SetArrowVisual(UStaticMesh* InMesh, const FTransform& InOffset)
@@ -111,7 +155,19 @@ void AMALProjectile::BeginPlay()
 		return;
 	}
 
+	// Same guarantee on the authority even when nothing called SetLaunchSpeed: an arrow with no
+	// velocity is indistinguishable from one that never spawned.
+	if (ProjectileMovement && ProjectileMovement->Velocity.IsNearlyZero())
+	{
+		SetLaunchSpeed(ProjectileMovement->InitialSpeed);
+	}
+
 	CollisionComponent->OnComponentHit.AddDynamic(this, &AMALProjectile::HandleHit);
+
+	// Characters answer the projectile with Overlap rather than Block (the character capsule is
+	// set up so melee volumes can report hits), so the blocking-hit callback above never runs
+	// against them. Both paths feed the same resolver.
+	CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &AMALProjectile::HandleBeginOverlap);
 }
 
 void AMALProjectile::HandleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
@@ -122,16 +178,52 @@ void AMALProjectile::HandleHit(UPrimitiveComponent* HitComponent, AActor* OtherA
 		return;
 	}
 
+	// A blocking hit is either a body or level geometry. No body: nothing to damage, the arrow
+	// simply stops against the world.
+	const FVector ImpactPoint = Hit.bBlockingHit ? FVector(Hit.ImpactPoint) : GetActorLocation();
+
+	if (!OtherActor || !DamageRequest.Instigator || OtherActor == DamageRequest.Instigator || OtherActor == GetOwner())
+	{
+		Destroy();
+		return;
+	}
+
+	if (ResolveHit(OtherActor, ImpactPoint))
+	{
+		Destroy();
+	}
+}
+
+void AMALProjectile::HandleBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	const FVector ImpactPoint = bFromSweep
+		? FVector(SweepResult.ImpactPoint)
+		: (OtherActor ? OtherActor->GetActorLocation() : GetActorLocation());
+
+	if (ResolveHit(OtherActor, ImpactPoint))
+	{
+		Destroy();
+	}
+}
+
+bool AMALProjectile::ResolveHit(AActor* OtherActor, const FVector& ImpactPoint)
+{
 	AActor* Avatar = DamageRequest.Instigator;
 	if (!Avatar || !OtherActor || OtherActor == Avatar || OtherActor == GetOwner())
 	{
-		return;
+		return false;
 	}
 
 	// A pierced body is reported again on the way out; one hit per actor per arrow.
 	if (HitActors.Contains(OtherActor))
 	{
-		return;
+		return false;
 	}
 	HitActors.Add(OtherActor);
 
@@ -139,12 +231,10 @@ void AMALProjectile::HandleHit(UPrimitiveComponent* HitComponent, AActor* OtherA
 	// nothing about it, so without this line an arrow that simply hit the level looks like one
 	// that never collided at all.
 	UE_LOG(LogTemp, Verbose, TEXT("%s hit %s at %s."),
-		*GetName(), *GetNameSafe(OtherActor), *Hit.ImpactPoint.ToCompactString());
+		*GetName(), *GetNameSafe(OtherActor), *ImpactPoint.ToCompactString());
 
 	FMALWeaponHitRequest Request = DamageRequest;
 	Request.Hit.HitActor = OtherActor;
-
-	const FVector ImpactPoint = Hit.bBlockingHit ? FVector(Hit.ImpactPoint) : GetActorLocation();
 	Request.Hit.HitLocation = FVector_NetQuantize(ImpactPoint);
 
 	const float Damage = UMALDamageExecutor::ExecuteWeaponHit(Request);
@@ -153,10 +243,10 @@ void AMALProjectile::HandleHit(UPrimitiveComponent* HitComponent, AActor* OtherA
 	// arrow even at full penetration, which is what stops a shot from crossing the whole level.
 	if (Damage <= 0.0f || RemainingPenetrations <= 0)
 	{
-		Destroy();
-		return;
+		return true;
 	}
 
 	--RemainingPenetrations;
 	CollisionComponent->IgnoreActorWhenMoving(OtherActor, true);
+	return false;
 }

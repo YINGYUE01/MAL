@@ -347,9 +347,13 @@ FTransform AMALCharacterBase::GetWeaponMuzzleTransform(FName PreferredSocket) co
 	}
 
 	// Skeletal first: a rigged weapon carries the sockets its own skeleton was authored with.
-	const TArray<USceneComponent*> Visuals{ GetWeaponSkeletalMesh(), GetWeaponMesh() };
+	// The character mesh is the last socket source because an enemy may be authored without a
+	// weapon actor at all: its muzzle socket then lives on the body skeleton, and skipping it
+	// would silently spawn the shot at a fixed chest offset instead of on the named socket.
+	const TArray<USceneComponent*> Weapons{ GetWeaponSkeletalMesh(), GetWeaponMesh() };
+	const TArray<USceneComponent*> SocketSources{ GetWeaponSkeletalMesh(), GetWeaponMesh(), GetMesh() };
 
-	for (USceneComponent* Visual : Visuals)
+	for (USceneComponent* Visual : SocketSources)
 	{
 		if (Visual && Visual->IsVisible() && !Socket.IsNone() && Visual->DoesSocketExist(Socket))
 		{
@@ -357,16 +361,24 @@ FTransform AMALCharacterBase::GetWeaponMuzzleTransform(FName PreferredSocket) co
 		}
 	}
 
-	for (USceneComponent* Visual : Visuals)
+	// Only a weapon may fall back to its own transform (the grip). The character mesh would
+	// return its origin at the feet, which reads as a shot fired from the floor.
+	for (USceneComponent* WeaponVisual : Weapons)
 	{
-		if (Visual && Visual->IsVisible())
+		if (WeaponVisual && WeaponVisual->IsVisible())
 		{
-			// No muzzle socket: the grip is still a better origin than the character pivot.
-			return Visual->GetComponentTransform();
+			return WeaponVisual->GetComponentTransform();
 		}
 	}
 
 	// Unarmed: shoot from roughly chest height so the projectile is not born inside the floor.
+	if (!Socket.IsNone())
+	{
+		UE_LOG(LogTemp, Verbose,
+			TEXT("AMALCharacterBase %s: muzzle socket '%s' not found on the weapon or the character mesh; using the chest fallback."),
+			*GetName(), *Socket.ToString());
+	}
+
 	const FVector Fallback = GetActorLocation() + GetActorForwardVector() * 50.0f + FVector(0.0f, 0.0f, 50.0f);
 	return FTransform(GetActorRotation(), Fallback);
 }
