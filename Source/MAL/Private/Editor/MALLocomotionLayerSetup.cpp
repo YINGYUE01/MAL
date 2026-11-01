@@ -163,7 +163,7 @@ namespace MALLocomotionSetup
 		return bConnected;
 	}
 
-	bool SaveAssetPackage(UObject* Asset)
+	bool SaveLocomotionAsset(UObject* Asset)
 	{
 		if (!Asset)
 		{
@@ -184,7 +184,7 @@ namespace MALLocomotionSetup
 		return bSaved;
 	}
 
-	void CompileBlueprint(UBlueprint* Blueprint)
+	void CompileLocomotionBlueprint(UBlueprint* Blueprint)
 	{
 		if (!Blueprint)
 		{
@@ -935,7 +935,7 @@ static void ConfigureWeaponDefinitions(const FString& SwordLayerClassPath)
 
 		Definition->LocomotionLayer = TSoftClassPtr<UAnimInstance>(FSoftObjectPath(SwordLayerClassPath));
 		Definition->MarkPackageDirty();
-		SaveAssetPackage(Definition);
+		SaveLocomotionAsset(Definition);
 		++ConfiguredCount;
 	}
 
@@ -956,7 +956,7 @@ static void ConfigurePlayerBlueprint(const FString& UnarmedLayerClassPath)
 
 	CharacterCDO->DefaultLocomotionLayer = TSoftClassPtr<UAnimInstance>(FSoftObjectPath(UnarmedLayerClassPath));
 	CharacterCDO->MarkPackageDirty();
-	SaveAssetPackage(PlayerBlueprint);
+	SaveLocomotionAsset(PlayerBlueprint);
 	UE_LOG(LogMALLocomotionSetup, Display, TEXT("BP_MALCharacter DefaultLocomotionLayer = %s"), *UnarmedLayerClassPath);
 }
 
@@ -1032,8 +1032,8 @@ int32 UMALLocomotionLayerSetupCommandlet::Main(const FString& Params)
 		return 1;
 	}
 
-	CompileBlueprint(InterfaceBlueprint);
-	SaveAssetPackage(InterfaceBlueprint);
+	CompileLocomotionBlueprint(InterfaceBlueprint);
+	SaveLocomotionAsset(InterfaceBlueprint);
 
 	UClass* InterfaceClass = InterfaceBlueprint->GeneratedClass.Get();
 	if (!InterfaceClass)
@@ -1051,15 +1051,15 @@ int32 UMALLocomotionLayerSetupCommandlet::Main(const FString& Params)
 
 	if (bCompileOnly)
 	{
-		CompileBlueprint(HostBlueprint);
-		SaveAssetPackage(HostBlueprint);
+		CompileLocomotionBlueprint(HostBlueprint);
+		SaveLocomotionAsset(HostBlueprint);
 
 		for (const TCHAR* LayerAsset : LayerAssets)
 		{
 			if (UAnimBlueprint* LayerBlueprint = LoadObject<UAnimBlueprint>(nullptr, *LayerAssetPath(LayerAsset)))
 			{
-				CompileBlueprint(LayerBlueprint);
-				SaveAssetPackage(LayerBlueprint);
+				CompileLocomotionBlueprint(LayerBlueprint);
+				SaveLocomotionAsset(LayerBlueprint);
 			}
 		}
 
@@ -1088,12 +1088,12 @@ int32 UMALLocomotionLayerSetupCommandlet::Main(const FString& Params)
 		InsertInertializationNode(FindMainAnimGraph(HostBlueprint));
 	}
 
-	SaveAssetPackage(HostBlueprint);
+	SaveLocomotionAsset(HostBlueprint);
 
 	if (!bSkipCompile)
 	{
-		CompileBlueprint(HostBlueprint);
-		SaveAssetPackage(HostBlueprint);
+		CompileLocomotionBlueprint(HostBlueprint);
+		SaveLocomotionAsset(HostBlueprint);
 	}
 
 	for (const TCHAR* LayerAsset : LayerAssets)
@@ -1147,12 +1147,12 @@ int32 UMALLocomotionLayerSetupCommandlet::Main(const FString& Params)
 			PopulateLayerFunctionGraph(LayerGraph, *SourcePlayer);
 		}
 
-		SaveAssetPackage(LayerBlueprint);
+		SaveLocomotionAsset(LayerBlueprint);
 
 		if (!bSkipCompile)
 		{
-			CompileBlueprint(LayerBlueprint);
-			SaveAssetPackage(LayerBlueprint);
+			CompileLocomotionBlueprint(LayerBlueprint);
+			SaveLocomotionAsset(LayerBlueprint);
 		}
 	}
 

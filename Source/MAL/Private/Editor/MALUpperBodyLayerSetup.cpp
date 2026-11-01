@@ -312,7 +312,13 @@ namespace MALUpperBodySetup
 		return OutputPin->LinkedTo.Contains(InputPin);
 	}
 
-	bool SaveAssetPackage(UObject* Asset)
+	/**
+	 * Named per tool rather than SaveAssetPackage/CompileBlueprint like the other setup
+	 * commandlets: unity builds concatenate these .cpp files into one translation unit, and
+	 * their `using namespace` directives then pull two identical signatures into the same
+	 * scope, which resolves as an ambiguous overload instead of picking either one.
+	 */
+	bool SaveUpperBodyAsset(UObject* Asset)
 	{
 		if (!Asset)
 		{
@@ -333,7 +339,8 @@ namespace MALUpperBodySetup
 		return bSaved;
 	}
 
-	void CompileBlueprint(UBlueprint* Blueprint)
+	/** Same unity-build reason as SaveUpperBodyAsset: the name must stay unique in the module. */
+	void CompileUpperBodyBlueprint(UBlueprint* Blueprint)
 	{
 		if (!Blueprint)
 		{
@@ -954,7 +961,7 @@ namespace MALUpperBodySetup
 		}
 
 		Montage->MarkPackageDirty();
-		SaveAssetPackage(Montage);
+		SaveUpperBodyAsset(Montage);
 
 		UE_LOG(LogMALUpperBodySetup, Display, TEXT("%s slot tracks now use %s."), *Montage->GetName(), UpperBodySlotName);
 		return true;
@@ -1026,7 +1033,7 @@ namespace MALUpperBodySetup
 			BlendSpace->ResampleData();
 			BlendSpace->ValidateSampleData();
 			BlendSpace->MarkPackageDirty();
-			SaveAssetPackage(BlendSpace);
+			SaveUpperBodyAsset(BlendSpace);
 
 			UE_LOG(LogMALUpperBodySetup, Display, TEXT("%s now has %d samples."), *BlendSpace->GetName(), AddedCount);
 		}
@@ -1035,7 +1042,7 @@ namespace MALUpperBodySetup
 			UE_LOG(LogMALUpperBodySetup, Display, TEXT("%s already carries %d samples, axes refreshed only."),
 				*BlendSpace->GetName(), BlendSpace->GetNumberOfBlendSamples());
 			BlendSpace->MarkPackageDirty();
-			SaveAssetPackage(BlendSpace);
+			SaveUpperBodyAsset(BlendSpace);
 		}
 
 		return BlendSpace;
@@ -1273,11 +1280,11 @@ int32 UMALUpperBodyLayerSetupCommandlet::Main(const FString& Params)
 
 	if (bCompileOnly)
 	{
-		CompileBlueprint(HostBlueprint);
-		SaveAssetPackage(HostBlueprint);
+		CompileUpperBodyBlueprint(HostBlueprint);
+		SaveUpperBodyAsset(HostBlueprint);
 
-		CompileBlueprint(BowBlueprint);
-		SaveAssetPackage(BowBlueprint);
+		CompileUpperBodyBlueprint(BowBlueprint);
+		SaveUpperBodyAsset(BowBlueprint);
 
 		return ValidateUpperBodySplit(HostBlueprint, Skeleton, ShotMontage)
 			&& ValidateBowLayerAimingSwitch(BowBlueprint, BlendSpace) ? 0 : 1;
@@ -1286,7 +1293,7 @@ int32 UMALUpperBodyLayerSetupCommandlet::Main(const FString& Params)
 	if (!bSkipHostBlend)
 	{
 		InsertUpperBodyBlendStack(HostBlueprint);
-		SaveAssetPackage(HostBlueprint);
+		SaveUpperBodyAsset(HostBlueprint);
 	}
 
 	if (!bSkipMontage)
@@ -1308,19 +1315,19 @@ int32 UMALUpperBodyLayerSetupCommandlet::Main(const FString& Params)
 
 		if (bBowLayerChanged)
 		{
-			SaveAssetPackage(BowBlueprint);
+			SaveUpperBodyAsset(BowBlueprint);
 		}
 	}
 
 	if (!bSkipCompile)
 	{
-		CompileBlueprint(HostBlueprint);
-		SaveAssetPackage(HostBlueprint);
+		CompileUpperBodyBlueprint(HostBlueprint);
+		SaveUpperBodyAsset(HostBlueprint);
 
 		if (bBowLayerChanged)
 		{
-			CompileBlueprint(BowBlueprint);
-			SaveAssetPackage(BowBlueprint);
+			CompileUpperBodyBlueprint(BowBlueprint);
+			SaveUpperBodyAsset(BowBlueprint);
 		}
 	}
 
