@@ -3,6 +3,10 @@
 #include "Player/MALPlayerController.h"
 #include "Combat/MALHitFeedbackComponent.h"
 #include "Combat/MALLockOnComponent.h"
+#include "Character/MALEnemyCharacter.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "EngineUtils.h"
 #include "Combat/MALWeaponComponent.h"
 #include "Combat/MALWeaponDefinition.h"
 #include "Input/MALInputConfig.h"
@@ -644,6 +648,115 @@ void AMALPlayerController::MALDODGE()
 	}));
 
 	UE_LOG(LogTemp, Log, TEXT("MALDODGE: dash input sent."));
+}
+
+void AMALPlayerController::MALSPAWN(const FString& ClassPath, float Distance)
+{
+	UWorld* World = GetWorld();
+	APawn* ControlledPawn = GetPawn();
+	if (!World || !ControlledPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALSPAWN: no world or pawn."));
+		return;
+	}
+
+	UClass* SpawnClass = LoadClass<AActor>(nullptr, *ClassPath);
+	if (!SpawnClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALSPAWN: could not load '%s'."), *ClassPath);
+		return;
+	}
+
+	// In front of the player and turned to face them: an AI controller picks the player up as a
+	// target without any additional scene setup.
+	const FVector PlayerLocation = ControlledPawn->GetActorLocation();
+	const FVector SpawnPoint = PlayerLocation
+		+ ControlledPawn->GetActorForwardVector() * FMath::Max(Distance, 50.0f) + FVector(0.0f, 0.0f, 50.0f);
+	const FRotator SpawnFacing = (PlayerLocation - SpawnPoint).Rotation();
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	AActor* Spawned = World->SpawnActor<AActor>(SpawnClass, SpawnPoint, SpawnFacing, Params);
+	UE_LOG(LogTemp, Log, TEXT("MALSPAWN: %s"), Spawned ? *Spawned->GetName() : TEXT("failed"));
+}
+
+void AMALPlayerController::MALCOMBATINFO(float DelaySeconds)
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALCOMBATINFO: no pawn."));
+		return;
+	}
+
+	if (DelaySeconds > 0.0f)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimer(DebugInfoTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				MALCOMBATINFO();
+			}), DelaySeconds, false);
+		}
+
+		return;
+	}
+
+	if (const AMALCharacterBase* PlayerCharacter = Cast<AMALCharacterBase>(ControlledPawn))
+	{
+		UE_LOG(LogTemp, Log, TEXT("MALCOMBATINFO: player dead=%d."), PlayerCharacter->IsDead() ? 1 : 0);
+	}
+
+	if (const UCapsuleComponent* Capsule = ControlledPawn->FindComponentByClass<UCapsuleComponent>())
+	{
+		UE_LOG(LogTemp, Log, TEXT("MALCOMBATINFO: player capsule profile '%s', response to WorldDynamic %d, enabled=%d, objectType=%d, overlaps=%d."),
+			*Capsule->GetCollisionProfileName().ToString(),
+			static_cast<int32>(Capsule->GetCollisionResponseToChannel(ECC_WorldDynamic)),
+			static_cast<int32>(Capsule->GetCollisionEnabled()),
+			static_cast<int32>(Capsule->GetCollisionObjectType()),
+			Capsule->GetGenerateOverlapEvents() ? 1 : 0);
+	}
+
+	int32 BoxCount = 0;
+	for (TActorIterator<AMALEnemyCharacter> It(GetWorld()); It; ++It)
+	{
+		AMALEnemyCharacter* Enemy = *It;
+		if (!Enemy)
+		{
+			continue;
+		}
+
+		TArray<UActorComponent*> Components;
+		Enemy->GetComponents(Components);
+		for (UActorComponent* Component : Components)
+		{
+			UBoxComponent* Box = Cast<UBoxComponent>(Component);
+			if (!Box || Box->GetFName() != FName("weapon_collision"))
+			{
+				continue;
+			}
+
+			++BoxCount;
+			const FVector ToPlayer = (ControlledPawn->GetActorLocation() - Enemy->GetActorLocation()).GetSafeNormal2D();
+			const float FacingDot = FVector::DotProduct(Enemy->GetActorForwardVector(), ToPlayer);
+
+			TArray<AActor*> Overlaps;
+			Box->GetOverlappingActors(Overlaps);
+			const bool bPlayerInside = Overlaps.Contains(ControlledPawn);
+
+			UE_LOG(LogTemp, Log,
+				TEXT("MALCOMBATINFO: %s box enabled=%d responseToPawn=%d actorDist=%.0f boxDist=%.0f extent=%s facingDot=%.2f playerInside=%d overlaps=%d."),
+				*Enemy->GetName(), Box->GetCollisionEnabled() != ECollisionEnabled::NoCollision ? 1 : 0,
+				static_cast<int32>(Box->GetCollisionResponseToChannel(ECC_Pawn)),
+				FVector::Dist(Enemy->GetActorLocation(), ControlledPawn->GetActorLocation()),
+				FVector::Dist(Box->GetComponentLocation(), ControlledPawn->GetActorLocation()),
+				*Box->GetUnscaledBoxExtent().ToCompactString(), FacingDot,
+				bPlayerInside ? 1 : 0, Overlaps.Num());
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("MALCOMBATINFO: %d enemy hit boxes found."), BoxCount);
 }
 
 void AMALPlayerController::MALCAM()

@@ -14,6 +14,7 @@
 #include "Data/MALAbilitySet.h"
 #include "Data/MALSkillTreeDefinition.h"
 #include "GameAbilities/MALGameplayAbility.h"
+#include "GameAbilities/MALAbility_MeleeAttack.h"
 #include "Save/MALSaveSubsystem.h"
 #include "Animation/AnimInstance.h"
 #include "Engine/World.h"
@@ -225,6 +226,19 @@ void AMALCharacterBase::BindHealthChange()
 void AMALCharacterBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Set here rather than in the constructor: a blueprint's collision profile is applied after
+	// construction and would overwrite a constructor-time response. Melee hit volumes are
+	// WorldDynamic overlap boxes, and a capsule that blocks that channel turns the pair into a
+	// blocking hit -- BeginOverlap never fires, so the swing lands without damage.
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Capsule->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+
+		// A pair only reports an overlap when both sides generate overlap events, and a capsule
+		// that was authored without them silently swallows every weapon hit.
+		Capsule->SetGenerateOverlapEvents(true);
+	}
 
 	InitializeAbilitySystem();
 
@@ -739,6 +753,14 @@ void AMALCharacterBase::GrantAbilities()
 			Cast<UMALGameplayAbility>(AbilityClass->GetDefaultObject()))
 		{
 			InputTag = MALAbility->InputActivatedTag;
+		}
+
+		// An innate melee ability without a tag of its own still has to be reachable by the AI:
+		// behaviour trees trigger a swing through the generic attack tag, and an untagged spec
+		// would only carry an empty dynamic tag set.
+		if (!InputTag.IsValid() && AbilityClass->IsChildOf(UMALAbility_MeleeAttack::StaticClass()))
+		{
+			InputTag = UMALGameplayTags::Get()->Ability_Attack;
 		}
 
 		MALASC->GrantAbility(AbilityClass, InputTag, 1, NAME_None);

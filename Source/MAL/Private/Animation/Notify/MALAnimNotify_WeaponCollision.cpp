@@ -49,10 +49,12 @@ void UMALAnimNotify_WeaponCollision::Notify(USkeletalMeshComponent* MeshComp, UA
 		// Legitimate game case: the montage is being played outside of an ability (plain
 		// PlayAnimMontage), so there is nothing to toggle collision on. Verbose keeps it
 		// debuggable without spamming the log.
-		UE_LOG(LogTemp, Verbose, TEXT("UMALAnimNotify_WeaponCollision: No combo ability driving %s (owner: %s)"),
+		UE_LOG(LogTemp, Log, TEXT("UMALAnimNotify_WeaponCollision: No combo ability driving %s (owner: %s)"),
 			*GetNameSafe(MeshComp), *GetNameSafe(Owner));
 		return;
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("UMALAnimNotify_WeaponCollision: %s enable=%d"), *Owner->GetName(), bEnable ? 1 : 0);
 
 	if (bEnable)
 	{
