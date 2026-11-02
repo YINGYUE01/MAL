@@ -50,6 +50,28 @@ protected:
 	virtual bool AreDefaultAttributesApplied() const override;
 	virtual void MarkDefaultAttributesApplied() override;
 
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void PossessedBy(AController* NewController) override;
+
+	/** Subscribe to the controller's lock-on component; safe to call more than once. */
+	void BindLockOnComponent();
+
+	/** Lock state changed: free movement faces the input, locked movement faces the target. */
+	UFUNCTION()
+	void HandleLockChanged(AActor* LockedTarget);
+
+	/** Swap the rotation model the movement component uses. */
+	void ApplyLockMovementMode(bool bLocked);
+
+	/** Yaw rate while locked; the body keeps facing the target instead of the stick. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Movement|LockOn", meta = (ClampMin = "0.0"))
+	float LockedRotationRateYaw = 540.0f;
+
+	/** Yaw rate while free; higher because the body has to catch up with the stick. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Movement", meta = (ClampMin = "0.0"))
+	float FreeRotationRateYaw = 640.0f;
+
 	/**
 	 * Third-person rig.
 	 *

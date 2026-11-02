@@ -3,8 +3,11 @@
 #include "Character/MALCharacter.h"
 
 #include "Camera/CameraComponent.h"
+#include "Combat/MALLockOnComponent.h"
 #include "GameAbilities/MALAbility_Dodge.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Player/MALPlayerController.h"
 #include "Player/MALPlayerState.h"
 
 namespace
@@ -56,6 +59,86 @@ void AMALCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	}
 
 	Super::CalcCamera(DeltaTime, OutResult);
+}
+
+void AMALCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// Free movement by default, then let the controller's current lock state override it.
+	ApplyLockMovementMode(false);
+	BindLockOnComponent();
+}
+
+void AMALCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// The controller (and its lock component) outlives the pawn; drop the binding so a respawn
+	// does not leave this character registered on someone else's component.
+	if (const AMALPlayerController* PC = Cast<AMALPlayerController>(GetController()))
+	{
+		if (UMALLockOnComponent* LockOn = PC->GetLockOnComponent())
+		{
+			LockOn->OnLockChanged.RemoveAll(this);
+		}
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+void AMALCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	// Respawning or a controller swap re-binds against the new controller.
+	BindLockOnComponent();
+}
+
+void AMALCharacter::BindLockOnComponent()
+{
+	AMALPlayerController* PC = Cast<AMALPlayerController>(GetController());
+	if (!PC)
+	{
+		return;
+	}
+
+	UMALLockOnComponent* LockOn = PC->GetLockOnComponent();
+	if (!LockOn)
+	{
+		return;
+	}
+
+	LockOn->OnLockChanged.RemoveAll(this);
+	LockOn->OnLockChanged.AddDynamic(this, &AMALCharacter::HandleLockChanged);
+
+	// The component may already hold a target (e.g. after a respawn): sync immediately.
+	HandleLockChanged(LockOn->GetLockedTarget());
+}
+
+void AMALCharacter::HandleLockChanged(AActor* LockedTarget)
+{
+	ApplyLockMovementMode(LockedTarget != nullptr);
+}
+
+void AMALCharacter::ApplyLockMovementMode(bool bLocked)
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	// Free: the body turns toward the stick and runs forward.
+	// Locked: the body keeps facing the target via the controller and steps sideways instead,
+	// which is what makes a strafe blend space meaningful.
+	Movement->bOrientRotationToMovement = !bLocked;
+	Movement->bUseControllerDesiredRotation = bLocked;
+	Movement->RotationRate = FRotator(0.0f, bLocked ? LockedRotationRateYaw : FreeRotationRateYaw, 0.0f);
+
+	// The controller owns yaw in both modes here; the movement component above decides whether
+	// the body follows it directly (locked) or turns toward velocity (free).
+	bUseControllerRotationYaw = false;
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationRoll = false;
 }
 
 bool AMALCharacter::AreDefaultAttributesApplied() const

@@ -2,8 +2,10 @@
 
 #include "Animation/MALAnimInstance.h"
 #include "Character/MALCharacterBase.h"
+#include "Combat/MALLockOnComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PawnMovementComponent.h"
+#include "Player/MALPlayerController.h"
 
 UMALAnimInstance::UMALAnimInstance()
 {
@@ -57,16 +59,57 @@ void UMALAnimInstance::UpdateMovementData()
 	bIsInAir = MovementComp->IsFalling();
 
 	const FVector Acceleration = MovementComp->GetCurrentAcceleration();
-	bHasMovementInput = !Acceleration.IsNearlyZero();
 
-	// CalculateDirection: angle between Velocity (XY) and Actor forward direction
+	// Direction answers "where is the player pushing" rather than "where is the body drifting".
+	// Velocity lags a stick flick by a few frames and reads zero on the first frame of a turn,
+	// which parks a strafe blend space on the forward cell. Input is available immediately.
+	FVector InputDirection = MovementComp->GetPendingInputVector();
+	if (InputDirection.IsNearlyZero())
 	{
-		const FVector Velocity2D = Velocity.GetSafeNormal2D();
-		const FVector Forward = CachedCharacter->GetActorForwardVector().GetSafeNormal2D();
-		const float Dot = FVector::DotProduct(Forward, Velocity2D);
-		const float Cross = FVector::CrossProduct(Forward, Velocity2D).Z;
-		Direction = FMath::RadiansToDegrees(FMath::Atan2(Cross, Dot));
+		InputDirection = MovementComp->GetLastInputVector();
 	}
+	InputDirection.Z = 0.0f;
+
+	bHasMovementInput = !InputDirection.IsNearlyZero() || !Acceleration.IsNearlyZero();
+
+	bIsLockedOn = IsLockedOn();
+	bUseStrafeBlendSpace = bIsLockedOn;
+
+	// Free movement is a 1D speed blend: the body always faces the travel direction, so there
+	// is no meaningful angle to publish. Locked movement is the 2D blend: the body faces the
+	// target through the controller, so the angle is measured against the controller's forward.
+	if (bIsLockedOn)
+	{
+		FVector FacingForward = CachedCharacter->GetActorForwardVector().GetSafeNormal2D();
+		if (const AController* Controller = CachedCharacter->GetController())
+		{
+			FacingForward = FRotator(0.0f, Controller->GetControlRotation().Yaw, 0.0f).Vector();
+		}
+
+		// Velocity is what the body is actually doing; input covers the first frames of a turn
+		// where velocity has not built up yet.
+		FVector MoveDirection = Speed >= 1.0f ? Velocity.GetSafeNormal2D() : InputDirection.GetSafeNormal2D();
+
+		if (!MoveDirection.IsNearlyZero() && !FacingForward.IsNearlyZero())
+		{
+			const float Dot = FVector::DotProduct(FacingForward, MoveDirection);
+			const float Cross = FVector::CrossProduct(FacingForward, MoveDirection).Z;
+			Direction = FMath::RadiansToDegrees(FMath::Atan2(Cross, Dot));
+		}
+		else
+		{
+			Direction = 0.0f;
+		}
+	}
+	else
+	{
+		Direction = 0.0f;
+	}
+
+	// The layer graphics read X/Y straight from here; C++ keeps the single source of truth for
+	// the axis ranges and for "is this strafing".
+	LocomotionBlendInput = FVector2D(Direction, Speed);
+	bIsStrafing = bIsLockedOn && bHasMovementInput && FMath::Abs(Direction) >= StrafeDirectionThreshold;
 
 	LocomotionState = CalculateLocomotionState(Speed);
 }
@@ -105,4 +148,21 @@ EMALLocomotionState UMALAnimInstance::CalculateLocomotionState(float InSpeed) co
 AMALCharacterBase* UMALAnimInstance::GetMALCharacter() const
 {
 	return CachedCharacter.Get();
+}
+
+bool UMALAnimInstance::IsLockedOn() const
+{
+	if (!CachedCharacter)
+	{
+		return false;
+	}
+
+	const AMALPlayerController* PC = Cast<AMALPlayerController>(CachedCharacter->GetController());
+	if (!PC)
+	{
+		return false;
+	}
+
+	const UMALLockOnComponent* LockOn = PC->GetLockOnComponent();
+	return LockOn && LockOn->IsLocked();
 }
