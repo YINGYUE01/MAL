@@ -90,6 +90,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Locomotion|BlendSpace", meta = (ClampMin = "0.0", ClampMax = "180.0"))
 	float StrafeDirectionThreshold = 45.0f;
 
+	/**
+	 * How quickly the direction axis catches up with the input.
+	 *
+	 * A blend space samples the pose at the axis value; flipping the stick from left to right
+	 * moves the axis 180 degrees in one frame, which reads as the mesh snapping around. Tweening
+	 * the axis makes the same change a short slide between the side-step and the other side-step.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Locomotion|BlendSpace", meta = (ClampMin = "0.0"))
+	float DirectionInterpSpeed = 10.0f;
+
 	UFUNCTION(BlueprintPure, Category = "Locomotion|BlendSpace")
 	FVector2D GetLocomotionBlendInput() const { return LocomotionBlendInput; }
 
@@ -111,7 +121,7 @@ public:
 
 protected:
 	AMALCharacterBase* GetMALCharacter() const;
-	void UpdateMovementData();
+	void UpdateMovementData(float DeltaSeconds);
 	void UpdateAimOffset();
 	EMALLocomotionState CalculateLocomotionState(float InSpeed) const;
 

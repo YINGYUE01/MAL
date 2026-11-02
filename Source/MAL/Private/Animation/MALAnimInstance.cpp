@@ -28,7 +28,7 @@ void UMALAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		return;
 	}
 
-	UpdateMovementData();
+	UpdateMovementData(DeltaSeconds);
 	UpdateAimOffset();
 }
 
@@ -45,7 +45,7 @@ void UMALAnimInstance::AdvanceMontagesOnly(float DeltaSeconds)
 	Montage_Advance(DeltaSeconds);
 }
 
-void UMALAnimInstance::UpdateMovementData()
+void UMALAnimInstance::UpdateMovementData(float DeltaSeconds)
 {
 	const UCharacterMovementComponent* MovementComp = CachedCharacter->GetCharacterMovement();
 	if (!MovementComp)
@@ -94,16 +94,26 @@ void UMALAnimInstance::UpdateMovementData()
 		{
 			const float Dot = FVector::DotProduct(FacingForward, MoveDirection);
 			const float Cross = FVector::CrossProduct(FacingForward, MoveDirection).Z;
-			Direction = FMath::RadiansToDegrees(FMath::Atan2(Cross, Dot));
+			const float TargetDirection = FMath::RadiansToDegrees(FMath::Atan2(Cross, Dot));
+
+			// Tween along the shortest arc. Without this a left-to-right flick moves the axis 180
+			// degrees in one frame and the blend space snaps between the two side-step poses.
+			const float DeltaAngle = FMath::UnwindDegrees(TargetDirection - Direction);
+			Direction = FMath::UnwindDegrees(
+				FMath::FInterpTo(Direction, Direction + DeltaAngle, DeltaSeconds, DirectionInterpSpeed));
 		}
 		else
 		{
-			Direction = 0.0f;
+			Direction = FMath::UnwindDegrees(
+				FMath::FInterpTo(Direction, 0.0f, DeltaSeconds, DirectionInterpSpeed));
 		}
 	}
 	else
 	{
-		Direction = 0.0f;
+		// Free mode reads the 1D blend space, but the axis is still kept at 0 so a stale angle
+		// cannot leak into anything that reads it.
+		Direction = FMath::UnwindDegrees(
+			FMath::FInterpTo(Direction, 0.0f, DeltaSeconds, DirectionInterpSpeed));
 	}
 
 	// The layer graphics read X/Y straight from here; C++ keeps the single source of truth for

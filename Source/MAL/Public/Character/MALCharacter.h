@@ -64,6 +64,9 @@ protected:
 	/** Swap the rotation model the movement component uses. */
 	void ApplyLockMovementMode(bool bLocked);
 
+	/** Read the lock state from the controller and apply it (used at spawn and one frame later). */
+	void ApplyCurrentLockMovementMode();
+
 	/** Yaw rate while locked; the body keeps facing the target instead of the stick. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Movement|LockOn", meta = (ClampMin = "0.0"))
 	float LockedRotationRateYaw = 540.0f;

@@ -9,6 +9,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Player/MALPlayerController.h"
 #include "Player/MALPlayerState.h"
+#include "TimerManager.h"
 
 namespace
 {
@@ -66,8 +67,16 @@ void AMALCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	// Free movement by default, then let the controller's current lock state override it.
-	ApplyLockMovementMode(false);
+	ApplyCurrentLockMovementMode();
 	BindLockOnComponent();
+
+	// A Blueprint BeginPlay may re-enable Orient Rotation To Movement on the movement component
+	// after this call. Re-assert one frame later so the locked rotation model cannot be silently
+	// replaced: that is what makes a strafe turn the whole body instead of stepping sideways.
+	GetWorldTimerManager().SetTimerForNextTick([this]()
+	{
+		ApplyCurrentLockMovementMode();
+	});
 }
 
 void AMALCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -117,6 +126,21 @@ void AMALCharacter::BindLockOnComponent()
 void AMALCharacter::HandleLockChanged(AActor* LockedTarget)
 {
 	ApplyLockMovementMode(LockedTarget != nullptr);
+}
+
+void AMALCharacter::ApplyCurrentLockMovementMode()
+{
+	bool bLocked = false;
+
+	if (const AMALPlayerController* PC = Cast<AMALPlayerController>(GetController()))
+	{
+		if (const UMALLockOnComponent* LockOn = PC->GetLockOnComponent())
+		{
+			bLocked = LockOn->IsLocked();
+		}
+	}
+
+	ApplyLockMovementMode(bLocked);
 }
 
 void AMALCharacter::ApplyLockMovementMode(bool bLocked)
