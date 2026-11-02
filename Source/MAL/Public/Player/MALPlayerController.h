@@ -102,6 +102,10 @@ public:
 	UFUNCTION(Exec)
 	void MALSPAWN(const FString& ClassPath, float Distance = 500.0f);
 
+	/** Debug: activate the generic attack ability so the lunge chain can be exercised without input. */
+	UFUNCTION(Exec)
+	void MALATTACK();
+
 	/** Target the camera is currently locked onto, or null. */
 	UFUNCTION(BlueprintPure, Category = "MAL|LockOn")
 	AActor* GetLockedTarget() const;

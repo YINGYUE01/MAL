@@ -198,6 +198,15 @@ protected:
 	/** Apply forward lunge via GAS root motion (MoveToForce) */
 	void ApplyLunge();
 
+	/**
+	 * One step-in per combo section, driven only by the montage's MAL Lunge notify.
+	 *
+	 * The notify is the single source of truth: a section that has no Lunge notify never
+	 * lunges, and a section that has one lunges exactly once even if the notify is authored
+	 * more than once inside it.
+	 */
+	int32 LastLungeComboStep = INDEX_NONE;
+
 	/** Called when the lunge root motion finishes (timed out or reached destination) */
 	UFUNCTION()
 	void OnLungeFinished();
@@ -205,6 +214,26 @@ protected:
 	/** The currently running lunge task; ended before a new lunge starts. */
 	UPROPERTY()
 	TObjectPtr<UAbilityTask_ApplyRootMotionMoveToForce> ActiveLungeTask;
+
+	/** Stops the launch impulse at the end of the authored lunge window. */
+	FTimerHandle LungeStopTimer;
+
+	/**
+	 * Drives the lunge frame by frame.
+	 *
+	 * A montage authored with root motion sets HasAnimRootMotion() for the whole swing, and the
+	 * movement component then ignores both velocity (LaunchCharacter) and extra root motion
+	 * sources. Writing the position directly is the only path that survives that: measured on
+	 * the scythe swing, a 500 cm/s launch produced 9.8 cm of the authored 150.
+	 */
+	FTimerHandle LungeStepTimer;
+
+	FVector LungeStartLocation = FVector::ZeroVector;
+	FVector LungeTargetLocation = FVector::ZeroVector;
+	float LungeStartTime = 0.0f;
+
+	/** One interpolation step; clears itself when the authored window is over. */
+	void StepLunge();
 
 	// --- Deprecated ---
 

@@ -76,6 +76,7 @@ void UMALAbility_MeleeAttack::ActivateAbility(
 	// Abilities are instanced and reused, so a flag left over from the previous swing would
 	// hide a montage that never opens a window.
 	bHitWindowOpened = false;
+	LastLungeComboStep = INDEX_NONE;
 
 	if (!CommitAbilityOrEnd(Handle, ActorInfo, ActivationInfo))
 	{
@@ -127,6 +128,13 @@ void UMALAbility_MeleeAttack::EndAbility(
 	// pending release has nothing left to do.
 	CancelPostHitRelease();
 
+	// A step timer left armed would keep writing the position of whatever the character does next.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(LungeStepTimer);
+		World->GetTimerManager().ClearTimer(LungeStopTimer);
+	}
+
 	// Stop any in-flight lunge explicitly; the task is also destroyed by EndAbility, but
 	// ending it here guarantees the root motion source is removed before the movement mode
 	// is restored.
@@ -150,6 +158,18 @@ void UMALAbility_MeleeAttack::EndAbility(
 
 void UMALAbility_MeleeAttack::TriggerLunge()
 {
+	// The montage notify is the only entry point; one step-in per combo section. A section can
+	// carry several notifies (or be re-entered), and a multi-hit swing must not drag the body
+	// forward once per hit.
+	const int32 ComboStep = GetHitComboStep();
+	if (ComboStep == LastLungeComboStep)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("%s: lunge ignored, combo step %d already lunged"),
+			*GetName(), ComboStep);
+		return;
+	}
+
+	LastLungeComboStep = ComboStep;
 	ApplyLunge();
 }
 
@@ -303,18 +323,23 @@ void UMALAbility_MeleeAttack::ApplyLunge()
 	// would move the character with nobody left to end it.
 	if (!IsActive())
 	{
+		UE_LOG(LogTemp, Verbose, TEXT("%s: lunge skipped, ability is no longer active"), *GetName());
 		return;
 	}
 
 	const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
 	if (!ActorInfo)
 	{
+		UE_LOG(LogTemp, Verbose, TEXT("%s: lunge skipped, no actor info"), *GetName());
 		return;
 	}
 
 	ACharacter* Character = Cast<ACharacter>(ActorInfo->AvatarActor.Get());
 	if (!Character || LungeDistance <= 0.f || LungeDuration <= 0.f)
 	{
+		UE_LOG(LogTemp, Log,
+			TEXT("%s: lunge skipped (character=%s distance=%.1f duration=%.2f)"),
+			*GetName(), *GetNameSafe(Character), LungeDistance, LungeDuration);
 		return;
 	}
 
@@ -340,27 +365,63 @@ void UMALAbility_MeleeAttack::ApplyLunge()
 		Character->SetActorRotation(FRotator(0.f, ControlRotation.Yaw, 0.f));
 	}
 
-	// Drive the lunge through GAS root motion instead of manual SetActorLocation.
-	UAbilityTask_ApplyRootMotionMoveToForce* LungeTask =
-		UAbilityTask_ApplyRootMotionMoveToForce::ApplyRootMotionMoveToForce(
-			this,
-			NAME_None,                                  // TaskInstanceName
-			TargetLocation,
-			LungeDuration,
-			false,                                      // bSetNewMovementMode: keep current mode so gravity/ground following stay intact
-			MOVE_Walking,                               // unused when bSetNewMovementMode is false
-			true,                                       // bRestrictSpeedToExpected: avoid velocity spikes when blocked by collision
-			nullptr,                                    // PathOffsetCurve
-			ERootMotionFinishVelocityMode::SetVelocity, // stop cleanly at the end (no post-lunge slide)
-			FVector::ZeroVector,                        // SetVelocityOnFinish
-			0.f);                                       // ClampVelocityOnFinish (unused)
-
-	if (LungeTask)
+	// Drive the lunge by writing the capsule position over the authored window.
+	//
+	// A montage authored with root motion makes the movement component ignore velocity and extra
+	// root motion sources for the whole swing (HasAnimRootMotion), which is why a LaunchCharacter
+	// impulse only moved the arrow's own root motion (~10 cm of the authored 150). Interpolating
+	// the position is immune to that: it does not go through the movement component at all.
+	UWorld* World = GetWorld();
+	if (!World)
 	{
-		LungeTask->OnTimedOut.AddDynamic(this, &UMALAbility_MeleeAttack::OnLungeFinished);
-		LungeTask->OnTimedOutAndDestinationReached.AddDynamic(this, &UMALAbility_MeleeAttack::OnLungeFinished);
-		LungeTask->ReadyForActivation();
-		ActiveLungeTask = LungeTask;
+		return;
+	}
+
+	LungeStartLocation = Character->GetActorLocation();
+	LungeTargetLocation = LungeStartLocation + LungeDir * LungeDistance;
+	LungeStartTime = World->GetTimeSeconds();
+
+	UE_LOG(LogTemp, Log,
+		TEXT("%s: lunge %.0fcm/%.2fs from %s toward %s (falling=%d, rootMotion=%d)"),
+		*GetName(), LungeDistance, LungeDuration, *LungeStartLocation.ToCompactString(),
+		*LungeTargetLocation.ToCompactString(),
+		Character->GetCharacterMovement()->IsFalling() ? 1 : 0,
+		Character->GetCharacterMovement()->HasAnimRootMotion() ? 1 : 0);
+
+	World->GetTimerManager().ClearTimer(LungeStepTimer);
+	World->GetTimerManager().SetTimer(LungeStepTimer,
+		FTimerDelegate::CreateWeakLambda(this, [this]() { StepLunge(); }), 0.008f, true);
+
+	StepLunge();
+}
+
+void UMALAbility_MeleeAttack::StepLunge()
+{
+	UWorld* World = GetWorld();
+	const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
+	ACharacter* Character = ActorInfo ? Cast<ACharacter>(ActorInfo->AvatarActor.Get()) : nullptr;
+
+	if (!World || !Character || LungeDuration <= KINDA_SMALL_NUMBER)
+	{
+		if (World)
+		{
+			World->GetTimerManager().ClearTimer(LungeStepTimer);
+		}
+		return;
+	}
+
+	const float Elapsed = World->GetTimeSeconds() - LungeStartTime;
+	const float Alpha = FMath::Clamp(Elapsed / LungeDuration, 0.0f, 1.0f);
+	const FVector NewLocation = FMath::Lerp(LungeStartLocation, LungeTargetLocation, Alpha);
+
+	Character->SetActorLocation(NewLocation, /*bSweep*/ true, nullptr, ETeleportType::None);
+
+	if (Alpha >= 1.0f)
+	{
+		World->GetTimerManager().ClearTimer(LungeStepTimer);
+
+		UE_LOG(LogTemp, Log, TEXT("%s: lunge end, moved %.1f cm (target %.0f)"),
+			*GetName(), FVector::Dist2D(LungeStartLocation, Character->GetActorLocation()), LungeDistance);
 	}
 }
 

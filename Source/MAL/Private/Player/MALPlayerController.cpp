@@ -3,6 +3,7 @@
 #include "Player/MALPlayerController.h"
 #include "Combat/MALHitFeedbackComponent.h"
 #include "Combat/MALLockOnComponent.h"
+#include "Character/MALCharacterBase.h"
 #include "Combat/MALWeaponComponent.h"
 #include "Combat/MALWeaponDefinition.h"
 #include "Input/MALInputConfig.h"
@@ -675,6 +676,29 @@ void AMALPlayerController::MALSPAWN(const FString& ClassPath, float Distance)
 
 	AActor* Spawned = World->SpawnActor<AActor>(SpawnClass, SpawnPoint, SpawnFacing, Params);
 	UE_LOG(LogTemp, Log, TEXT("MALSPAWN: %s"), Spawned ? *Spawned->GetName() : TEXT("failed"));
+}
+
+void AMALPlayerController::MALATTACK()
+{
+	const AMALCharacterBase* PlayerCharacter = Cast<AMALCharacterBase>(GetPawn());
+	if (!PlayerCharacter)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALATTACK: no character pawn."));
+		return;
+	}
+
+	UMALAbilitySystemComponent* MALASC = PlayerCharacter->GetMALAbilitySystemComponent();
+	if (!MALASC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MALATTACK: no ability system component."));
+		return;
+	}
+
+	FGameplayTagContainer AttackTags;
+	AttackTags.AddTag(UMALGameplayTags::Get()->Ability_Attack);
+
+	const bool bActivated = MALASC->TryActivateAbilitiesByTag(AttackTags);
+	UE_LOG(LogTemp, Log, TEXT("MALATTACK: activated=%d"), bActivated ? 1 : 0);
 }
 
 void AMALPlayerController::MALCAM()
