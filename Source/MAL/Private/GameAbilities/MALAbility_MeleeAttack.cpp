@@ -6,6 +6,8 @@
 #include "AbilitySystemComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Character/MALCharacterBase.h"
+#include "Animation/AnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Combat/MALDamageExecutor.h"
 #include "Combat/MALWeaponComponent.h"
 #include "Combat/MALWeaponDefinition.h"
@@ -134,6 +136,14 @@ void UMALAbility_MeleeAttack::EndAbility(
 		World->GetTimerManager().ClearTimer(LungeStepTimer);
 		World->GetTimerManager().ClearTimer(LungeStopTimer);
 	}
+
+	// Restore root motion if the ability ended mid-lunge; leaving it suspended would break
+	// every later animation that expects to move the capsule.
+	if (UAnimInstance* AnimInstance = LungeAnimInstance.Get())
+	{
+		AnimInstance->RootMotionMode = static_cast<ERootMotionMode::Type>(PreviousRootMotionMode);
+	}
+	LungeAnimInstance = nullptr;
 
 	// Stop any in-flight lunge explicitly; the task is also destroyed by EndAbility, but
 	// ending it here guarantees the root motion source is removed before the movement mode
@@ -381,6 +391,19 @@ void UMALAbility_MeleeAttack::ApplyLunge()
 	LungeTargetLocation = LungeStartLocation + LungeDir * LungeDistance;
 	LungeStartTime = World->GetTimeSeconds();
 
+	// The swing's own root motion keeps writing capsule movement every frame; fighting it with
+	// our interpolation makes the character jitter (and the camera with it). Suspend it for the
+	// duration so exactly one system owns the position.
+	if (USkeletalMeshComponent* MeshComp = Character->GetMesh())
+	{
+		if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
+		{
+			LungeAnimInstance = AnimInstance;
+			PreviousRootMotionMode = static_cast<uint8>(AnimInstance->RootMotionMode);
+			AnimInstance->RootMotionMode = ERootMotionMode::IgnoreRootMotion;
+		}
+	}
+
 	UE_LOG(LogTemp, Log,
 		TEXT("%s: lunge %.0fcm/%.2fs from %s toward %s (falling=%d, rootMotion=%d)"),
 		*GetName(), LungeDistance, LungeDuration, *LungeStartLocation.ToCompactString(),
@@ -419,6 +442,13 @@ void UMALAbility_MeleeAttack::StepLunge()
 	if (Alpha >= 1.0f)
 	{
 		World->GetTimerManager().ClearTimer(LungeStepTimer);
+
+		// Hand the root motion channel back to the animation.
+		if (UAnimInstance* AnimInstance = LungeAnimInstance.Get())
+		{
+			AnimInstance->RootMotionMode = static_cast<ERootMotionMode::Type>(PreviousRootMotionMode);
+		}
+		LungeAnimInstance = nullptr;
 
 		UE_LOG(LogTemp, Log, TEXT("%s: lunge end, moved %.1f cm (target %.0f)"),
 			*GetName(), FVector::Dist2D(LungeStartLocation, Character->GetActorLocation()), LungeDistance);

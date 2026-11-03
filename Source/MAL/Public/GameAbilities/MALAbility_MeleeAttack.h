@@ -16,6 +16,7 @@ class UCameraShakeBase;
 class UGameplayEffect;
 class UAnimMontage;
 class UMALWeaponComponent;
+class UAnimInstance;
 struct FMALWeaponHitRequest;
 
 /**
@@ -231,6 +232,12 @@ protected:
 	FVector LungeStartLocation = FVector::ZeroVector;
 	FVector LungeTargetLocation = FVector::ZeroVector;
 	float LungeStartTime = 0.0f;
+
+	/** Anim instance whose root motion mode is suspended for the lunge, plus the value to restore. */
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimInstance> LungeAnimInstance;
+
+	uint8 PreviousRootMotionMode = 0;
 
 	/** One interpolation step; clears itself when the authored window is over. */
 	void StepLunge();
