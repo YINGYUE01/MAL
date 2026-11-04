@@ -1,13 +1,12 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Character/MALEnemyCharacter.h"
+
 #include "Components/CapsuleComponent.h"
 #include "Components/MALAbilitySystemComponent.h"
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
 #include "AI/MALEnemyAIController.h"
-#include "AIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Tags/MALGameplayTags.h"
 #include "UI/Widgets/MALWorldWidgetComponent.h"
 
 AMALEnemyCharacter::AMALEnemyCharacter()
@@ -31,16 +30,17 @@ AMALEnemyCharacter::AMALEnemyCharacter()
 	HealthBarWidget->SetupAttachment(GetCapsuleComponent());
 	HealthBarWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 110.0f));
 
-	// Default AI possession for placed/spawned enemies; a BP subclass can override these.
+	// Possession is left to the engine and to Blueprint overrides; the controller class is an
+	// empty shell until the replacement AI layer exists. Nothing here decides behaviour.
 	AIControllerClass = AMALEnemyAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
-	// Nothing drives the controller rotation for an AI pawn, so the body has to turn toward its
-	// own velocity; otherwise a patrolling enemy slides sideways while facing where it spawned.
+	// No AI rotation driver is assumed, so the body turns toward its own velocity; otherwise a
+	// moving enemy slides sideways while facing where it spawned.
 	bUseControllerRotationYaw = false;
 
-	// Enemies are placed in tight formations and chase the same target, so let the movement
-	// component push them apart instead of letting capsules overlap into one silhouette.
+	// Enemies are placed in tight formations, so let the movement component push them apart
+	// instead of letting capsules overlap into one silhouette.
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
 		Movement->bUseRVOAvoidance = true;
@@ -55,48 +55,8 @@ AMALEnemyCharacter::AMALEnemyCharacter()
 	// A cleared wave should not keep dead pawns replicating for the rest of the match.
 	CorpseLifeSpan = 8.0f;
 
-	// Behavior trees activate swings by tag; this is the default every melee enemy uses until a
-	// Blueprint overrides it for a different attack.
-	AttackAbilityTag = UMALGameplayTags::Get()->Ability_Attack;
-
 	// Character defaults to 100 Hz, but keep a floor so montage replication does not
 	// fall back to the low adaptive rate while the enemy is idle.
 	SetNetUpdateFrequency(100.0f);
 	SetMinNetUpdateFrequency(30.0f);
-}
-
-void AMALEnemyCharacter::BeginPlay()
-{
-	Super::BeginPlay();
-
-	// AutoPossessAI normally runs during PostInitializeComponents. PIE can copy a placed
-	// enemy before that path has produced a controller, and a stale serialized instance can
-	// leave a plain AAIController behind. Replace anything that is not our brain, then spawn
-	// explicitly so the enemy can never silently stand still.
-	if (HasAuthority() && AutoPossessAI != EAutoPossessAI::Disabled)
-	{
-		if (AController* Existing = GetController())
-		{
-			if (!Cast<AMALEnemyAIController>(Existing))
-			{
-				Existing->UnPossess();
-				Existing->Destroy();
-			}
-		}
-
-		if (!GetController())
-		{
-			// Respect a Blueprint AI Controller class; only fall back to the native class when
-			// the pawn was left with the generic engine controller.
-			if (!AIControllerClass || AIControllerClass == AAIController::StaticClass())
-			{
-				AIControllerClass = AMALEnemyAIController::StaticClass();
-			}
-
-			SpawnDefaultController();
-
-			UE_LOG(LogTemp, Warning, TEXT("AMALEnemyCharacter::BeginPlay %s: spawned controller %s"),
-				*GetName(), *GetNameSafe(GetController()));
-		}
-	}
 }

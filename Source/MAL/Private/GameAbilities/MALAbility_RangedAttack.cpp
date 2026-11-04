@@ -3,7 +3,6 @@
 #include "GameAbilities/MALAbility_RangedAttack.h"
 
 #include "Animation/AnimMontage.h"
-#include "AI/MALEnemyAIController.h"
 #include "Character/MALCharacterBase.h"
 #include "Combat/MALProjectile.h"
 #include "Engine/World.h"
@@ -118,19 +117,8 @@ FMALWeaponHitRequest UMALAbility_RangedAttack::BuildDamageRequest() const
 
 AActor* UMALAbility_RangedAttack::ResolveAimTarget(AActor* Avatar) const
 {
-	const APawn* AvatarPawn = Cast<APawn>(Avatar);
-	if (!AvatarPawn)
-	{
-		return nullptr;
-	}
-
-	// The enemy brain keeps its current target on the blackboard, which is the body the shot is
-	// supposed to hit. Null outside combat, where the fallback below keeps the shot sane.
-	if (const AMALEnemyAIController* EnemyController = Cast<AMALEnemyAIController>(AvatarPawn->GetController()))
-	{
-		return EnemyController->GetCombatTarget();
-	}
-
+	// Target resolution belonged to the removed enemy AI controller. Until the replacement AI
+	// provides a target source again, the shot falls back to the avatar's own aim direction.
 	return nullptr;
 }
 
