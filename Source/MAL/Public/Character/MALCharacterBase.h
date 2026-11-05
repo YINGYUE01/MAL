@@ -15,7 +15,7 @@ class USkeletalMeshComponent;
 class UStaticMeshComponent;
 class UMALAbilitySystemComponent;
 class UMALAttributeSet;
-class UMALClassDefinition;
+class UMALProgressionDefinition;
 class UGameplayAbility;
 class UMALWeaponComponent;
 class UMALComboComponent;
@@ -117,33 +117,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MAL|Combat|Weapon")
 	void SetBuiltInWeaponHidden(bool bHide, FName MaterialSlotName);
 
-	/** Class definition that determines which abilities this character has. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Class")
-	TObjectPtr<UMALClassDefinition> ClassDefinition;
+	/** Growth rules (level cap, points per level, experience curve). Abilities are not here. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Progression")
+	TObjectPtr<UMALProgressionDefinition> ProgressionDefinition;
 
 	/**
-	 * Abilities every pawn of this class has from birth, independent of the class definition and
-	 * of the weapon in hand.
-	 *
-	 * Granted under the character's own source key and paired with the ability's
-	 * InputActivatedTag, the same way an ability set entry is. This is where a movement tool that
-	 * belongs to nobody -- a dodge every player should have before picking up anything -- lives;
-	 * putting it in a weapon set would take it away on an unequip, and in a skill tree would gate
-	 * it behind progression.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Class")
-	TArray<TSubclassOf<UGameplayAbility>> InnateAbilities;
-
-	/**
-	 * ClassDefinition, falling back to the class default when the instance carries none.
+	 * ProgressionDefinition, falling back to the class default when the instance carries none.
 	 *
 	 * The property is EditDefaultsOnly, so the class default is the only place it can be authored.
-	 * An actor placed before the property existed can still carry a serialized empty override that
-	 * reads as None, and the instance value then wins over the blueprint. Reading through the
-	 * archetype keeps such an actor working; an enemy that loses its abilities this way only walks
-	 * up to its target and never swings.
+	 * Reading through the archetype keeps actors placed before the property existed working.
 	 */
-	const UMALClassDefinition* GetClassDefinition() const;
+	const UMALProgressionDefinition* GetProgressionDefinition() const;
 
 	/**
 	 * Server only: drop every granted spec and grant the class kit plus every unlocked skill.
@@ -320,8 +304,11 @@ protected:
 	/** Apply one of the default attribute effects, with Level as the spec level. */
 	void ApplyAttributeGE(TSubclassOf<UGameplayEffect> GEClass, float Level);
 
-	/** Server only: clear previously granted specs and grant ClassDefinition's ability sets. */
+	/** Server only: clear the legacy character layer and rebuild the weapon's abilities. */
 	virtual void GrantAbilities();
+
+	/** Server only: grant one ability under the character layer if the spec is not present yet. */
+	void GrantAbilityIfMissing(TSubclassOf<UGameplayAbility> AbilityClass);
 
 	/** Default attribute application guard. Player characters override this to use PlayerState. */
 	virtual bool AreDefaultAttributesApplied() const;

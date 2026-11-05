@@ -60,3 +60,34 @@ AMALEnemyCharacter::AMALEnemyCharacter()
 	SetNetUpdateFrequency(100.0f);
 	SetMinNetUpdateFrequency(30.0f);
 }
+
+void AMALEnemyCharacter::GrantAbilities()
+{
+	Super::GrantAbilities();
+
+	// The base clears the character layer and refreshes the weapon; an enemy's own kit is this
+	// blueprint-authored list. GrantAbilityIfMissing keeps a re-possession from duplicating specs.
+	for (const TSubclassOf<UGameplayAbility>& AbilityClass : InitialAbilities)
+	{
+		GrantAbilityIfMissing(AbilityClass);
+	}
+}
+
+bool AMALEnemyCharacter::TryActivateAbilityByTag(FGameplayTag AbilityTag)
+{
+	if (!AbilityTag.IsValid())
+	{
+		return false;
+	}
+
+	UMALAbilitySystemComponent* MALASC = GetMALAbilitySystemComponent();
+	if (!MALASC)
+	{
+		return false;
+	}
+
+	FGameplayTagContainer AbilityTags;
+	AbilityTags.AddTag(AbilityTag);
+
+	return MALASC->TryActivateAbilitiesByTag(AbilityTags, /*bAllowRemoteActivation*/ true);
+}

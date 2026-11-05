@@ -50,6 +50,9 @@ protected:
 	virtual bool AreDefaultAttributesApplied() const override;
 	virtual void MarkDefaultAttributesApplied() override;
 
+	/** Player kit: the dodge is the one ability not carried by a weapon. */
+	virtual void GrantAbilities() override;
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PossessedBy(AController* NewController) override;

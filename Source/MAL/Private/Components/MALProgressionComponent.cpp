@@ -11,7 +11,7 @@
 #include "Combat/MALWeaponComponent.h"
 #include "Combat/MALWeaponDefinition.h"
 #include "Curves/RealCurve.h"
-#include "Data/MALClassDefinition.h"
+#include "Data/MALProgressionDefinition.h"
 #include "Data/MALSkillTreeDefinition.h"
 #include "Engine/CurveTable.h"
 #include "Engine/World.h"
@@ -129,8 +129,8 @@ void UMALProgressionComponent::AddExperience(int32 Amount)
 		return;
 	}
 
-	const UMALClassDefinition* ClassDefinition = GetClassDefinition();
-	const int32 MaxLevel = ClassDefinition ? FMath::Max(ClassDefinition->MaxCharacterLevel, 1) : 1;
+	const UMALProgressionDefinition* ProgressionDefinition = GetProgressionDefinition();
+	const int32 MaxLevel = ProgressionDefinition ? FMath::Max(ProgressionDefinition->MaxCharacterLevel, 1) : 1;
 
 	// At the cap the award is dropped rather than banked: experience that can never be spent
 	// would only make the bar climb against a threshold nothing reads.
@@ -174,12 +174,12 @@ void UMALProgressionComponent::AddExperience(int32 Amount)
 	{
 		// A level pays out points instead of writing the primaries: the player decides where
 		// they land, and a stat only moves when SpendAttributePoints says so.
-		const int32 PointsPerLevel = ClassDefinition ? FMath::Max(ClassDefinition->AttributePointsPerLevel, 0) : 0;
+		const int32 PointsPerLevel = ProgressionDefinition ? FMath::Max(ProgressionDefinition->AttributePointsPerLevel, 0) : 0;
 		GrantAttributePoints(GainedLevels * PointsPerLevel);
 
 		// A second currency, paid out on the same beat. Zero is a valid configuration and simply
 		// means this class buys no skills.
-		const int32 SkillPointsPerLevel = ClassDefinition ? FMath::Max(ClassDefinition->SkillPointsPerLevel, 0) : 0;
+		const int32 SkillPointsPerLevel = ProgressionDefinition ? FMath::Max(ProgressionDefinition->SkillPointsPerLevel, 0) : 0;
 		GrantSkillPoints(GainedLevels * SkillPointsPerLevel);
 
 		// Sent before the authority-only broadcast, so every machine learns about the level at the
@@ -336,9 +336,9 @@ bool UMALProgressionComponent::SpendAttributePoints(EMALPrimaryStat Stat, int32 
 
 	// Cap is authored per class and off by default. Reject the whole spend rather than part of
 	// it: a partial spend that returns true would leave the caller's count and the bar disagreeing.
-	if (const UMALClassDefinition* ClassDefinition = GetClassDefinition())
+	if (const UMALProgressionDefinition* Progression = GetProgressionDefinition())
 	{
-		const int32 Cap = ClassDefinition->MaxAttributePointsPerStat;
+		const int32 Cap = Progression->MaxAttributePointsPerStat;
 		if (Cap > 0 && AllocatedPoints[Index] + Count > Cap)
 		{
 			return false;
@@ -683,11 +683,11 @@ void UMALProgressionComponent::RefreshGrantedAbilities()
 	}
 }
 
-const UMALClassDefinition* UMALProgressionComponent::GetClassDefinition() const
+const UMALProgressionDefinition* UMALProgressionComponent::GetProgressionDefinition() const
 {
 	const AMALPlayerState* OwningPlayerState = GetOwner<AMALPlayerState>();
 	const AMALCharacterBase* Pawn = OwningPlayerState ? Cast<AMALCharacterBase>(OwningPlayerState->GetPawn()) : nullptr;
-	return Pawn ? Pawn->GetClassDefinition() : nullptr;
+	return Pawn ? Pawn->GetProgressionDefinition() : nullptr;
 }
 
 UMALProgressionAttributeSet* UMALProgressionComponent::GetProgressionSet() const
@@ -698,14 +698,14 @@ UMALProgressionAttributeSet* UMALProgressionComponent::GetProgressionSet() const
 
 float UMALProgressionComponent::EvaluateExperienceToNextLevel(int32 Level) const
 {
-	const UMALClassDefinition* ClassDefinition = GetClassDefinition();
-	if (!ClassDefinition || !ClassDefinition->ExperienceToNextLevelTable || ClassDefinition->ExperienceToNextLevelRowName.IsNone())
+	const UMALProgressionDefinition* ProgressionDefinition = GetProgressionDefinition();
+	if (!ProgressionDefinition || !ProgressionDefinition->ExperienceToNextLevelTable || ProgressionDefinition->ExperienceToNextLevelRowName.IsNone())
 	{
 		return 0.0f;
 	}
 
-	const FRealCurve* Curve = ClassDefinition->ExperienceToNextLevelTable->FindCurve(
-		ClassDefinition->ExperienceToNextLevelRowName,
+	const FRealCurve* Curve = ProgressionDefinition->ExperienceToNextLevelTable->FindCurve(
+		ProgressionDefinition->ExperienceToNextLevelRowName,
 		TEXT("UMALProgressionComponent::EvaluateExperienceToNextLevel"),
 		false);
 

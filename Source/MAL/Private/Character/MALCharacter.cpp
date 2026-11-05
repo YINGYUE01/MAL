@@ -27,9 +27,8 @@ AMALCharacter::AMALCharacter()
 	// every player-controlled pawn starts on the player side. Blueprints can still override it.
 	TeamId = FGenericTeamId(MALTeam::Player);
 
-	// Innate: the dodge belongs to the pawn, not to a weapon or a skill purchase, so it is
-	// available on the first spawn and never disappears on an unequip.
-	InnateAbilities.Add(UMALAbility_Dodge::StaticClass());
+	// Skills are weapon-driven; the dodge below is granted by GrantAbilities as the single
+	// player-only exception, so no innate list is authored here.
 
 	// Third-person rig, created here because BP_MALCharacter authors no working camera. Without
 	// it the viewport falls back to the pawn's eyes. The names differ from the blueprint's own
@@ -163,6 +162,16 @@ void AMALCharacter::ApplyLockMovementMode(bool bLocked)
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationRoll = false;
+}
+
+void AMALCharacter::GrantAbilities()
+{
+	Super::GrantAbilities();
+
+	// The dodge is the one ability that is not carried by a weapon: it stays available while
+	// unarmed. Everything else a player can cast comes from the equipped weapon's ability sets
+	// and unlocked skill-tree nodes, rebuilt by the Super call above.
+	GrantAbilityIfMissing(UMALAbility_Dodge::StaticClass());
 }
 
 bool AMALCharacter::AreDefaultAttributesApplied() const

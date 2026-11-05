@@ -35,8 +35,9 @@ struct FMALAbilitySetEntry
 /**
  * UMALAbilitySet
  * 
- * A reusable set of abilities (e.g. "Warrior Basic Abilities").
- * Granted to a character via ClassDefinition.
+ * A reusable set of abilities (e.g. "Sword Basic Abilities").
+ * Granted through a weapon definition's GrantedAbilitySets, or by an enemy's InitialAbilities
+ * when a single set is not worth authoring.
  */
 UCLASS(BlueprintType)
 class MAL_API UMALAbilitySet : public UPrimaryDataAsset

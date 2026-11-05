@@ -9,7 +9,7 @@
 #include "GameplayTagContainer.h"
 #include "MALProgressionComponent.generated.h"
 
-class UMALClassDefinition;
+class UMALProgressionDefinition;
 class UMALProgressionAttributeSet;
 class UMALWeaponDefinition;
 struct FMALDamageResolvedEvent;
@@ -249,8 +249,8 @@ private:
 	/** Narrow the world-wide kill bus down to this player's own kills. */
 	void HandleDamageResolved(const FMALDamageResolvedEvent& Event);
 
-	/** Owning player's class definition, read through the pawn. Null while the pawn is absent. */
-	const UMALClassDefinition* GetClassDefinition() const;
+	/** Owning player's progression definition, read through the pawn. Null while the pawn is absent. */
+	const UMALProgressionDefinition* GetProgressionDefinition() const;
 
 	/**
 	 * Weapon in the owner's hand, read through the pawn. Null when there is no pawn, no weapon

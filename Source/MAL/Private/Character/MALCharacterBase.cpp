@@ -10,7 +10,7 @@
 #include "Components/MALAbilitySystemComponent.h"
 #include "Components/MALProgressionComponent.h"
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
-#include "Data/MALClassDefinition.h"
+#include "Data/MALProgressionDefinition.h"
 #include "Data/MALAbilitySet.h"
 #include "Data/MALSkillTreeDefinition.h"
 #include "GameAbilities/MALGameplayAbility.h"
@@ -125,15 +125,15 @@ UMALAttributeSet* AMALCharacterBase::GetMALAttributeSet() const
 	return nullptr;
 }
 
-const UMALClassDefinition* AMALCharacterBase::GetClassDefinition() const
+const UMALProgressionDefinition* AMALCharacterBase::GetProgressionDefinition() const
 {
-	if (ClassDefinition)
+	if (ProgressionDefinition)
 	{
-		return ClassDefinition;
+		return ProgressionDefinition;
 	}
 
 	const AMALCharacterBase* ClassDefault = GetClass()->GetDefaultObject<AMALCharacterBase>();
-	return ClassDefault ? ClassDefault->ClassDefinition.Get() : nullptr;
+	return ClassDefault ? ClassDefault->ProgressionDefinition.Get() : nullptr;
 }
 
 int32 AMALCharacterBase::GetExperienceReward() const
@@ -723,68 +723,46 @@ void AMALCharacterBase::GrantAbilities()
 		return;
 	}
 
-	// Clear first so respawn/re-possession cannot duplicate specs or input tags. This clears the
-	// character's own key only, so a re-grant leaves the abilities an equipped weapon filed under
-	// its own key in place -- the old flat list deleted those and had no way to hand them back.
+	// The character-owned layer no longer grants class sets or innate abilities: a player's kit
+	// comes from the equipped weapon, and an enemy grants its own initial list. The clear stays
+	// so specs left behind by the old class-definition flow cannot stack on a rebuild.
 	MALASC->ClearGrantedAbilities();
-
-	const UMALClassDefinition* Definition = GetClassDefinition();
-
-	if (!Definition)
-	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("MALCharacterBase::GrantAbilities %s: no ClassDefinition on the instance or the class default, so no abilities were granted"),
-			*GetName());
-	}
-	else
-	{
-		for (const TObjectPtr<UMALAbilitySet>& AbilitySet : Definition->GrantedAbilitySets)
-		{
-			if (AbilitySet)
-			{
-				MALASC->GrantAbilitySet(AbilitySet);
-			}
-		}
-
-		// Only the class's own ability sets are handed out here. Earned skills live on the
-		// weapon now and are granted by RefreshWeaponGrantedAbilities below, so a character with
-		// nothing in hand has only whatever these sets carry.
-	}
-
-	// Innate abilities last, so a data-driven set can never shadow them. Their input tag comes
-	// from the ability's own CDO, exactly like a set entry without an override.
-	for (const TSubclassOf<UGameplayAbility>& AbilityClass : InnateAbilities)
-	{
-		if (!AbilityClass)
-		{
-			continue;
-		}
-
-		FGameplayTag InputTag;
-		if (const UMALGameplayAbility* MALAbility =
-			Cast<UMALGameplayAbility>(AbilityClass->GetDefaultObject()))
-		{
-			InputTag = MALAbility->InputActivatedTag;
-		}
-
-		// An innate melee ability without a tag of its own still has to be reachable by the AI:
-		// behaviour trees trigger a swing through the generic attack tag, and an untagged spec
-		// would only carry an empty dynamic tag set.
-		if (!InputTag.IsValid() && AbilityClass->IsChildOf(UMALAbility_MeleeAttack::StaticClass()))
-		{
-			InputTag = UMALGameplayTags::Get()->Ability_Attack;
-		}
-
-		MALASC->GrantAbility(AbilityClass, InputTag, 1, NAME_None);
-	}
 
 	bAbilitiesGranted = true;
 
-	// The weapon layer is rebuilt from the same entry point: it depends on data gathered here
-	// (the tree, the unlocked set) and must run even when the class definition is missing.
 	RefreshWeaponGrantedAbilities();
 
 	UE_LOG(LogTemp, Verbose, TEXT("MALCharacterBase::GrantAbilities %s: done"), *GetName());
+}
+
+void AMALCharacterBase::GrantAbilityIfMissing(TSubclassOf<UGameplayAbility> AbilityClass)
+{
+	if (!AbilityClass || !HasAuthority())
+	{
+		return;
+	}
+
+	UMALAbilitySystemComponent* MALASC = GetMALAbilitySystemComponent();
+	if (!MALASC)
+	{
+		return;
+	}
+
+	// Several call sites grant the same small lists on possession and on refresh, so the spec is
+	// checked by class first; GrantAbility itself appends unconditionally.
+	if (MALASC->FindAbilitySpecFromClass(AbilityClass))
+	{
+		return;
+	}
+
+	FGameplayTag InputTag;
+	if (const UMALGameplayAbility* MALAbility =
+		Cast<UMALGameplayAbility>(AbilityClass->GetDefaultObject()))
+	{
+		InputTag = MALAbility->InputActivatedTag;
+	}
+
+	MALASC->GrantAbility(AbilityClass, InputTag, 1, NAME_None);
 }
 
 void AMALCharacterBase::RefreshWeaponGrantedAbilities()
