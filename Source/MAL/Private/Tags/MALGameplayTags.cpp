@@ -28,9 +28,11 @@ void UMALGameplayTags::InitializeNativeTags()
 	Status_Casting = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Casting")), TEXT("Entity is casting and cannot move"));
 	Status_Dodging = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Dodging")), TEXT("Entity is mid-dodge"));
 	Status_Invulnerable = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.Invulnerable")), TEXT("Damage is discarded while this is held"));
+	Status_HitReacting = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Status.HitReacting")), TEXT("A hit reaction currently owns the body"));
 
 	// Event Tags
 	Event_Hit = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.Hit")), TEXT("Entity was hit or damaged"));
+	Event_HitReact = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.HitReact")), TEXT("Non-lethal damage resolved; trigger the hit reaction ability"));
 	Event_Death = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.Death")), TEXT("Entity died"));
 	Event_WeaponHit = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.WeaponHit")), TEXT("Weapon collision detected a hit"));
 
@@ -52,6 +54,7 @@ void UMALGameplayTags::InitializeNativeTags()
 
 	// Ability Tags
 	Ability_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Attack")), TEXT("Attack ability"));
+	Ability_HitReact = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.HitReact")), TEXT("Shared hit reaction ability"));
 	Ability_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Buff")), TEXT("Self-buff ability"));
 	Ability_Dodge = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Dodge")), TEXT("Dodge ability"));
 

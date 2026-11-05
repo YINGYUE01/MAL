@@ -49,6 +49,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
 	FGameplayTag Status_Invulnerable;
 
+	/** A hit reaction ability currently owns the body; further hits do not restart it. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Status")
+	FGameplayTag Status_HitReacting;
+
 	// -----------------------------------------------------------------------------
 	// Event Tags - Represent events that can be triggered
 	// -----------------------------------------------------------------------------
@@ -56,6 +60,10 @@ public:
 	/** Entity was hit/damaged */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Event")
 	FGameplayTag Event_Hit;
+
+	/** Non-lethal damage resolved; activates the shared hit reaction ability. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Event")
+	FGameplayTag Event_HitReact;
 
 	/** Entity died */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Event")
@@ -125,6 +133,10 @@ public:
 	/** Attack ability */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
 	FGameplayTag Ability_Attack;
+
+	/** Shared hit reaction ability, granted to players and enemies alike. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
+	FGameplayTag Ability_HitReact;
 
 	/** Self-buff ability */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")

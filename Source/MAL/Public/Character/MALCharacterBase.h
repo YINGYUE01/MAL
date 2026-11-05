@@ -20,6 +20,7 @@ class UGameplayAbility;
 class UMALWeaponComponent;
 class UMALComboComponent;
 class UAnimInstance;
+class UAnimMontage;
 struct FMALDamageResolvedEvent;
 
 /**
@@ -244,6 +245,22 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
 	FTransform GetWeaponMuzzleTransform(FName PreferredSocket = NAME_None) const;
+
+	// --- Hit reaction ---
+
+	/**
+	 * Full-body montage played when this character takes non-lethal damage.
+	 * Authored per character blueprint; the shared hit reaction ability reads it from here.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Combat|HitReact")
+	TObjectPtr<UAnimMontage> HitReactMontage;
+
+	/** Ability granted for hit reactions. Defaults to the shared native ability. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Combat|HitReact")
+	TSubclassOf<UGameplayAbility> HitReactAbilityClass;
+
+	UFUNCTION(BlueprintPure, Category = "MAL|Combat|HitReact")
+	UAnimMontage* GetHitReactMontage() const { return HitReactMontage; }
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MAL|Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttribute;

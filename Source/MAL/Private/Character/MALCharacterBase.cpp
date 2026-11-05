@@ -2,6 +2,8 @@
 
 #include "Character/MALCharacterBase.h"
 #include "Player/MALPlayerState.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "Abilities/GameplayAbilityTypes.h"
 #include "Combat/MALCombatEvents.h"
 #include "Combat/MALCombatEventsSubsystem.h"
 #include "Combat/MALWeaponComponent.h"
@@ -15,6 +17,7 @@
 #include "Data/MALSkillTreeDefinition.h"
 #include "GameAbilities/MALGameplayAbility.h"
 #include "GameAbilities/MALAbility_MeleeAttack.h"
+#include "GameAbilities/MALAbility_HitReact.h"
 #include "Save/MALSaveSubsystem.h"
 #include "Animation/AnimInstance.h"
 #include "Engine/World.h"
@@ -39,6 +42,9 @@ AMALCharacterBase::AMALCharacterBase()
 	// player pawn and the AI-owned enemy pawn before any attack ability activates.
 	WeaponComponent = CreateDefaultSubobject<UMALWeaponComponent>(TEXT("WeaponComponent"));
 	ComboComponent = CreateDefaultSubobject<UMALComboComponent>(TEXT("ComboComponent"));
+
+	// Shared by every damaging character; a blueprint only supplies its own hit react montage.
+	HitReactAbilityClass = UMALAbility_HitReact::StaticClass();
 
 	// Hangs off the body mesh so it follows the animated weapon bone. The attach socket comes from
 	// the weapon definition (each weapon has its own), so it is set when a weapon is equipped, not
@@ -573,15 +579,28 @@ void AMALCharacterBase::HandleHealthChanged(const FOnAttributeChangeData& Data)
 
 void AMALCharacterBase::HandleDamageResolved(const FMALDamageResolvedEvent& Event)
 {
-	if (!Event.bKillingBlow)
+	// The event names the actor that owns the AttributeSet, which is the PlayerState for players
+	// and this character for enemies. Comparing against the avatar would miss every player hit.
+	const UMALAttributeSet* CurrentAttributeSet = GetMALAttributeSet();
+	if (!CurrentAttributeSet || Event.Victim.Get() != CurrentAttributeSet->GetOwningActor())
 	{
 		return;
 	}
 
-	// The event names the actor that owns the AttributeSet, which is the PlayerState for players
-	// and this character for enemies. Comparing against the avatar would miss every player death.
-	const UMALAttributeSet* CurrentAttributeSet = GetMALAttributeSet();
-	if (!CurrentAttributeSet || Event.Victim.Get() != CurrentAttributeSet->GetOwningActor())
+	// Non-lethal damage plays the shared reaction. Invulnerable or fully absorbed hits never
+	// publish this event, so a blocked hit cannot trigger a flinch.
+	if (!Event.bKillingBlow && Event.Amount > 0.0f && !IsDead() && HitReactMontage)
+	{
+		FGameplayEventData Payload;
+		Payload.EventTag = UMALGameplayTags::Get()->Event_HitReact;
+		Payload.Instigator = Event.Instigator;
+		Payload.Target = this;
+		Payload.EventMagnitude = Event.Amount;
+
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(this, Payload.EventTag, Payload);
+	}
+
+	if (!Event.bKillingBlow)
 	{
 		return;
 	}
@@ -727,6 +746,10 @@ void AMALCharacterBase::GrantAbilities()
 	// comes from the equipped weapon, and an enemy grants its own initial list. The clear stays
 	// so specs left behind by the old class-definition flow cannot stack on a rebuild.
 	MALASC->ClearGrantedAbilities();
+
+	// Core combat reactions are not content: every character gets the shared hit reaction, and
+	// the montage it plays lives on the character blueprint.
+	GrantAbilityIfMissing(HitReactAbilityClass);
 
 	bAbilitiesGranted = true;
 
