@@ -60,10 +60,6 @@ void UMALWeaponComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// The hit box is authored on the character blueprint, so it exists by now. Remember its size
-	// before any definition overwrites it, or an unequip has nothing to restore.
-	CacheAuthoredHitBox();
-
 	const AActor* Owner = GetOwner();
 	if (Owner && Owner->HasAuthority())
 	{
@@ -77,7 +73,6 @@ void UMALWeaponComponent::BeginPlay()
 		// A client can begin play before the replicated value arrives. Start from the unarmed
 		// state; OnRep_EquippedWeapon applies whatever the server actually chose.
 		ApplyVisuals();
-		ApplyHitBox();
 		ApplyWeaponHitBox();
 		ApplyAmmo();
 	}
@@ -96,7 +91,6 @@ void UMALWeaponComponent::OnRep_EquippedWeapon()
 	// The definition is an asset, so a client has everything it needs to rebuild the same visuals
 	// and hit volume. Hit detection is deliberately not in this path: it stays on the authority.
 	ApplyVisuals();
-	ApplyHitBox();
 	ApplyWeaponHitBox();
 	ApplyAmmo();
 
@@ -127,7 +121,6 @@ void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
 	{
 		// Handing over the same asset is still a request to re-apply its setup.
 		ApplyVisuals();
-		ApplyHitBox();
 		ApplyWeaponHitBox();
 		ApplyAmmo();
 		ApplyAbilities();
@@ -139,7 +132,6 @@ void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
 
 	// OnRep only runs on clients, so the authority applies the swap by hand.
 	ApplyVisuals();
-	ApplyHitBox();
 	ApplyWeaponHitBox();
 	ApplyAmmo();
 
@@ -241,7 +233,7 @@ bool UMALWeaponComponent::TryConsumeAmmo(int32 Count)
 	return true;
 }
 
-void UMALWeaponComponent::StartHitWindow(int32 ComboStep, FName CollisionComponentName)
+void UMALWeaponComponent::StartHitWindow(int32 ComboStep)
 {
 	AActor* Owner = GetOwner();
 	if (!Owner || !Owner->HasAuthority())
@@ -254,43 +246,25 @@ void UMALWeaponComponent::StartHitWindow(int32 ComboStep, FName CollisionCompone
 	// A window that was never closed would otherwise keep the previous overlap binding.
 	ReleaseCollision();
 
-	// None means "the hit volume the equipped weapon provides", falling back to the legacy box
-	// authored on the character. An explicit name still targets a specific component, such as a shield.
-	const FName ResolvedName = CollisionComponentName.IsNone() ? HitBoxComponentName : CollisionComponentName;
-
 	CurrentComboStep = ComboStep;
 
-	UPrimitiveComponent* Volume = nullptr;
-	if (!CollisionComponentName.IsNone())
+	// The hit volume is always the box generated on the equipped weapon; there is no character
+	// authored box and no name lookup any more.
+	if (!WeaponHitBox)
 	{
-		// An explicit name lets an ability aim at a second volume, such as a shield.
-		Volume = FindCollisionComponent(CollisionComponentName);
+		ApplyWeaponHitBox();
 	}
 
-	if (!Volume)
-	{
-		// Fall back to the equipped weapon's runtime box. This also covers abilities that still
-		// pass the legacy "weapon_collision" name: that box no longer exists on the character, so
-		// the name resolves to nothing and the weapon provides the volume instead.
-		if (!WeaponHitBox)
-		{
-			ApplyWeaponHitBox();
-		}
-
-		Volume = ResolveHitVolume();
-	}
-
-	CollisionComponent = Volume;
-	ActiveComponentName = Volume ? Volume->GetFName() : ResolvedName;
-
+	CollisionComponent = WeaponHitBox;
 	if (!CollisionComponent)
 	{
 		UE_LOG(LogTemp, Warning,
-			TEXT("UMALWeaponComponent::StartHitWindow - no hit volume on %s (component %s, weapon %s, runtime box %s, legacy '%s' not found)"),
-			*Owner->GetName(), *GetName(), *GetNameSafe(EquippedWeapon), WeaponHitBox ? TEXT("present") : TEXT("null"),
-			*HitBoxComponentName.ToString());
+			TEXT("UMALWeaponComponent::StartHitWindow - no weapon hit volume on %s (component %s, weapon %s)"),
+			*Owner->GetName(), *GetName(), *GetNameSafe(EquippedWeapon));
 		return;
 	}
+
+	ActiveComponentName = CollisionComponent->GetFName();
 
 	HitActors.Reset();
 	bHitWindowOpen = true;
@@ -437,19 +411,6 @@ void UMALWeaponComponent::ApplyVisuals()
 	}
 }
 
-UPrimitiveComponent* UMALWeaponComponent::ResolveHitVolume()
-{
-	// The runtime box lives on the equipped weapon mesh, so it follows every weapon without any
-	// authoring on the character. The legacy character box stays as a fallback for skins and for
-	// weapons that draw no mesh of their own (the Kwang blade skinned into the character mesh).
-	if (WeaponHitBox)
-	{
-		return WeaponHitBox;
-	}
-
-	return ResolveHitBox();
-}
-
 USceneComponent* UMALWeaponComponent::GetActiveWeaponVisual() const
 {
 	const AMALCharacterBase* Character = Cast<AMALCharacterBase>(GetOwner());
@@ -543,84 +504,6 @@ void UMALWeaponComponent::DestroyWeaponHitBox()
 
 	WeaponHitBox->DestroyComponent();
 	WeaponHitBox = nullptr;
-}
-
-UBoxComponent* UMALWeaponComponent::ResolveHitBox()
-{
-	if (HitBox)
-	{
-		return HitBox;
-	}
-
-	// The hit volume is authored on the character, so it can only be resolved once the actor has
-	// its components. Every caller runs from BeginPlay onwards, which is after that.
-	HitBox = Cast<UBoxComponent>(FindCollisionComponent(HitBoxComponentName));
-	return HitBox;
-}
-
-void UMALWeaponComponent::CacheAuthoredHitBox()
-{
-	if (bAuthoredHitBoxCached)
-	{
-		return;
-	}
-
-	UBoxComponent* Box = ResolveHitBox();
-	if (!Box)
-	{
-		return;
-	}
-
-	// Unscaled: definitions author their extent in the same space as the component's own box.
-	AuthoredHitBoxExtent = Box->GetUnscaledBoxExtent();
-	AuthoredHitBoxLocation = Box->GetRelativeLocation();
-	bAuthoredHitBoxCached = true;
-}
-
-void UMALWeaponComponent::ApplyHitBox()
-{
-	UBoxComponent* Box = ResolveHitBox();
-	if (!Box)
-	{
-		return;
-	}
-
-	// Reached on clients through OnRep, which can run before anything else cached the authored
-	// size, so make sure it has been captured.
-	CacheAuthoredHitBox();
-
-	if (EquippedWeapon)
-	{
-		Box->SetBoxExtent(EquippedWeapon->HitBoxExtent);
-		Box->SetRelativeLocation(EquippedWeapon->HitBoxRelativeLocation);
-	}
-	else
-	{
-		Box->SetBoxExtent(AuthoredHitBoxExtent);
-		Box->SetRelativeLocation(AuthoredHitBoxLocation);
-	}
-}
-
-UPrimitiveComponent* UMALWeaponComponent::FindCollisionComponent(FName ComponentName) const
-{
-	const AActor* Owner = GetOwner();
-	if (!Owner || ComponentName.IsNone())
-	{
-		return nullptr;
-	}
-
-	TArray<UActorComponent*> Components;
-	Owner->GetComponents(Components);
-	for (UActorComponent* Component : Components)
-	{
-		UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component);
-		if (Primitive && Primitive->GetFName() == ComponentName)
-		{
-			return Primitive;
-		}
-	}
-
-	return nullptr;
 }
 
 void UMALWeaponComponent::ReleaseCollision()

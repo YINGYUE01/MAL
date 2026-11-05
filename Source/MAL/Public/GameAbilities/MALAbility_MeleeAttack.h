@@ -73,10 +73,6 @@ protected:
 	/** Resolve the character's weapon component (owns the hit window and the overlap binding). */
 	UMALWeaponComponent* GetWeaponComponent() const;
 
-	/** Name of the weapon collision component on the character (handed to UMALWeaponComponent). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|Melee|Weapon")
-	FName WeaponCollisionSocketName = TEXT("weapon_collision");
-
 	/**
 	 * True once this activation opened a hit window. Reset on activation and checked on end to
 	 * warn when the montage carries no opening notify: that swing silently cannot hit anything,

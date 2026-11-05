@@ -33,8 +33,7 @@ AMALCharacter::AMALCharacter()
 	// Third-person rig, created here because BP_MALCharacter authors no working camera. Without
 	// it the viewport falls back to the pawn's eyes. The names differ from the blueprint's own
 	// CameraBoom/FollowCamera nodes: those still exist in its construction script and would
-	// otherwise collide with the native properties, which breaks the blueprint compile and with
-	// it every authored component (weapon_collision included).
+	// otherwise collide with the native properties, which breaks the blueprint compile.
 	ThirdPersonBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("ThirdPersonBoom"));
 	ThirdPersonBoom->SetupAttachment(RootComponent);
 	ThirdPersonBoom->TargetArmLength = DefaultArmLength;

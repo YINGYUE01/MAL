@@ -48,7 +48,7 @@ AMALCharacterBase::AMALCharacterBase()
 
 	// Hangs off the body mesh so it follows the animated weapon bone. The attach socket comes from
 	// the weapon definition (each weapon has its own), so it is set when a weapon is equipped, not
-	// here. Collision is off: the hit volume is the separate weapon_collision box, and a second
+	// here. Collision is off: the hit volume is generated on the weapon mesh by the weapon component.
 	// blocker moving with the blade would push targets around during a swing.
 	WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
 	WeaponMesh->SetupAttachment(GetMesh());

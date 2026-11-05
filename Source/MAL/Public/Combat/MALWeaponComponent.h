@@ -54,12 +54,12 @@ public:
 	/**
 	 * Open the hit window for one swing. Any window still open is closed first.
 	 *
-	 * @param ComboStep              Step index stamped on every resulting hit.
-	 * @param CollisionComponentName Optional explicit volume name (e.g. a shield). When empty or
-	 *                               unresolvable, the runtime box on the equipped weapon is used,
-	 *                               then the legacy character-authored HitBoxComponentName.
+	 * The volume is the box generated at runtime on the equipped weapon mesh; there is no
+	 * character-authored hit box any more.
+	 *
+	 * @param ComboStep Step index stamped on every resulting hit.
 	 */
-	void StartHitWindow(int32 ComboStep, FName CollisionComponentName = NAME_None);
+	void StartHitWindow(int32 ComboStep);
 
 	/** Close the window, disable the volume and clear the per-swing hit list. */
 	void EndHitWindow();
@@ -126,10 +126,6 @@ public:
 	 */
 	FMALAmmoChangedSignature OnAmmoChanged;
 
-	/** Primitive name the hit window falls back to, and the box an equipped weapon resizes. */
-	UFUNCTION(BlueprintPure, Category = "MAL|Combat")
-	FName GetHitBoxComponentName() const { return HitBoxComponentName; }
-
 	/** Fired on the authority for each target hit during the current window. */
 	FMALWeaponHitSignature OnWeaponHit;
 
@@ -173,18 +169,6 @@ private:
 	 */
 	void ApplyAbilities();
 
-	/** Find the primitive with the given name on the owning actor. */
-	UPrimitiveComponent* FindCollisionComponent(FName ComponentName) const;
-
-	/** The hit volume box, resolved once and cached. Null when the character has none. */
-	UBoxComponent* ResolveHitBox();
-
-	/**
-	 * Primitive used for the next swing: the runtime weapon box first, then the legacy
-	 * character-authored box. Null when neither exists.
-	 */
-	UPrimitiveComponent* ResolveHitVolume();
-
 	/** Visual component the equipped definition draws, or null for skins/built-in blades. */
 	USceneComponent* GetActiveWeaponVisual() const;
 
@@ -194,14 +178,8 @@ private:
 	/** Destroy the runtime weapon box (unequip, EndPlay). */
 	void DestroyWeaponHitBox();
 
-	/** Remember the box the character was authored with, so unequipping can put it back. */
-	void CacheAuthoredHitBox();
-
 	/** Meshes, built-in weapon visibility and trail. Runs on the server and on clients. */
 	void ApplyVisuals();
-
-	/** Size and centre the hit volume for the equipped weapon. */
-	void ApplyHitBox();
 
 	/** Take the magazine size of the equipped definition as the current round count. */
 	void ApplyAmmo();
@@ -221,20 +199,12 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "MAL|Combat")
 	TArray<TObjectPtr<UMALWeaponDefinition>> Loadout;
 
-	/** Primitive that acts as the weapon hit volume. Must match the character's component name. */
-	UPROPERTY(EditDefaultsOnly, Category = "MAL|Combat")
-	FName HitBoxComponentName = TEXT("weapon_collision");
-
 	/**
 	 * Weapon currently equipped. Replicated because the swap has to look the same everywhere;
 	 * the definition itself is an asset, so the wire only carries a reference to it.
 	 */
 	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon)
 	TObjectPtr<UMALWeaponDefinition> EquippedWeapon;
-
-	/** Cached hit volume. Kept off CollisionComponent, which only exists during a window. */
-	UPROPERTY(Transient)
-	TObjectPtr<UBoxComponent> HitBox;
 
 	/**
 	 * Rounds left in the equipped weapon, INDEX_NONE when it is unlimited.
@@ -257,15 +227,9 @@ private:
 	 */
 	FName HiddenBuiltInSlot;
 
-	/** Box size and centre the blueprint authored, restored when the weapon is unequipped. */
-	FVector AuthoredHitBoxExtent = FVector::ZeroVector;
-	FVector AuthoredHitBoxLocation = FVector::ZeroVector;
-
 	/** Runtime hit box generated on the equipped weapon mesh (server only). */
 	UPROPERTY(Transient)
 	TObjectPtr<UBoxComponent> WeaponHitBox;
-
-	bool bAuthoredHitBoxCached = false;
 
 	/** Primitive currently acting as the hit volume. */
 	UPROPERTY(Transient)

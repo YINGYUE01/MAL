@@ -195,7 +195,7 @@ void UMALAbility_MeleeAttack::EnableWeaponCollision()
 	// when a swing starts. StartHitWindow is a no-op on clients.
 	if (UMALWeaponComponent* WeaponComponent = GetWeaponComponent())
 	{
-		WeaponComponent->StartHitWindow(GetHitComboStep(), WeaponCollisionSocketName);
+		WeaponComponent->StartHitWindow(GetHitComboStep());
 	}
 }
 
