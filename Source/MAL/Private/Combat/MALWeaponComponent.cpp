@@ -78,6 +78,7 @@ void UMALWeaponComponent::BeginPlay()
 		// state; OnRep_EquippedWeapon applies whatever the server actually chose.
 		ApplyVisuals();
 		ApplyHitBox();
+		ApplyWeaponHitBox();
 		ApplyAmmo();
 	}
 }
@@ -96,6 +97,7 @@ void UMALWeaponComponent::OnRep_EquippedWeapon()
 	// and hit volume. Hit detection is deliberately not in this path: it stays on the authority.
 	ApplyVisuals();
 	ApplyHitBox();
+	ApplyWeaponHitBox();
 	ApplyAmmo();
 
 	// The abilities themselves were granted on the server and replicate on their own; this is
@@ -126,6 +128,7 @@ void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
 		// Handing over the same asset is still a request to re-apply its setup.
 		ApplyVisuals();
 		ApplyHitBox();
+		ApplyWeaponHitBox();
 		ApplyAmmo();
 		ApplyAbilities();
 		OnEquippedWeaponChanged.Broadcast();
@@ -137,6 +140,7 @@ void UMALWeaponComponent::EquipWeapon(UMALWeaponDefinition* NewWeapon)
 	// OnRep only runs on clients, so the authority applies the swap by hand.
 	ApplyVisuals();
 	ApplyHitBox();
+	ApplyWeaponHitBox();
 	ApplyAmmo();
 
 	// After the definition has landed: the ability layer reads the equipped weapon, so handing
@@ -250,18 +254,41 @@ void UMALWeaponComponent::StartHitWindow(int32 ComboStep, FName CollisionCompone
 	// A window that was never closed would otherwise keep the previous overlap binding.
 	ReleaseCollision();
 
-	// None means "whatever the character authored", which is the name every blueprint in this
-	// project uses. An explicit name lets an ability aim at a second volume, such as a shield.
+	// None means "the hit volume the equipped weapon provides", falling back to the legacy box
+	// authored on the character. An explicit name still targets a specific component, such as a shield.
 	const FName ResolvedName = CollisionComponentName.IsNone() ? HitBoxComponentName : CollisionComponentName;
 
 	CurrentComboStep = ComboStep;
-	ActiveComponentName = ResolvedName;
 
-	CollisionComponent = FindCollisionComponent(ResolvedName);
+	UPrimitiveComponent* Volume = nullptr;
+	if (!CollisionComponentName.IsNone())
+	{
+		// An explicit name lets an ability aim at a second volume, such as a shield.
+		Volume = FindCollisionComponent(CollisionComponentName);
+	}
+
+	if (!Volume)
+	{
+		// Fall back to the equipped weapon's runtime box. This also covers abilities that still
+		// pass the legacy "weapon_collision" name: that box no longer exists on the character, so
+		// the name resolves to nothing and the weapon provides the volume instead.
+		if (!WeaponHitBox)
+		{
+			ApplyWeaponHitBox();
+		}
+
+		Volume = ResolveHitVolume();
+	}
+
+	CollisionComponent = Volume;
+	ActiveComponentName = Volume ? Volume->GetFName() : ResolvedName;
+
 	if (!CollisionComponent)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UMALWeaponComponent::StartHitWindow - No component named '%s' found on %s!"),
-			*ResolvedName.ToString(), *Owner->GetName());
+		UE_LOG(LogTemp, Warning,
+			TEXT("UMALWeaponComponent::StartHitWindow - no hit volume on %s (component %s, weapon %s, runtime box %s, legacy '%s' not found)"),
+			*Owner->GetName(), *GetName(), *GetNameSafe(EquippedWeapon), WeaponHitBox ? TEXT("present") : TEXT("null"),
+			*HitBoxComponentName.ToString());
 		return;
 	}
 
@@ -277,6 +304,10 @@ void UMALWeaponComponent::StartHitWindow(int32 ComboStep, FName CollisionCompone
 	CollisionComponent->SetGenerateOverlapEvents(true);
 
 	CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &UMALWeaponComponent::HandleOverlapBegin);
+
+	UE_LOG(LogTemp, Log, TEXT("UMALWeaponComponent::StartHitWindow - %s opened on %s (%s, step %d, extent %s)"),
+		*Owner->GetName(), *CollisionComponent->GetName(), *GetNameSafe(EquippedWeapon), ComboStep,
+		*CollisionComponent->Bounds.BoxExtent.ToCompactString());
 }
 
 void UMALWeaponComponent::EndHitWindow()
@@ -289,6 +320,7 @@ void UMALWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// A character dying mid-swing still has overlap bound to a component that is about to go
 	// away; release it before the owner tears down.
 	ReleaseCollision();
+	DestroyWeaponHitBox();
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -403,6 +435,114 @@ void UMALWeaponComponent::ApplyVisuals()
 			}
 		}
 	}
+}
+
+UPrimitiveComponent* UMALWeaponComponent::ResolveHitVolume()
+{
+	// The runtime box lives on the equipped weapon mesh, so it follows every weapon without any
+	// authoring on the character. The legacy character box stays as a fallback for skins and for
+	// weapons that draw no mesh of their own (the Kwang blade skinned into the character mesh).
+	if (WeaponHitBox)
+	{
+		return WeaponHitBox;
+	}
+
+	return ResolveHitBox();
+}
+
+USceneComponent* UMALWeaponComponent::GetActiveWeaponVisual() const
+{
+	const AMALCharacterBase* Character = Cast<AMALCharacterBase>(GetOwner());
+	if (!Character || !EquippedWeapon)
+	{
+		return nullptr;
+	}
+
+	// Mirror ApplyVisuals: a rigged weapon takes the skeletal slot, a plain blade the static one.
+	if (EquippedWeapon->WeaponSkeletalMesh && Character->GetWeaponSkeletalMesh())
+	{
+		return Character->GetWeaponSkeletalMesh();
+	}
+
+	if (EquippedWeapon->WeaponMesh && Character->GetWeaponMesh())
+	{
+		return Character->GetWeaponMesh();
+	}
+
+	return nullptr;
+}
+
+void UMALWeaponComponent::ApplyWeaponHitBox()
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority())
+	{
+		// Collision only matters on the server; clients draw the weapon and nothing else.
+		return;
+	}
+
+	USceneComponent* Visual = GetActiveWeaponVisual();
+	if (!Visual || !EquippedWeapon)
+	{
+		DestroyWeaponHitBox();
+		return;
+	}
+
+	if (!WeaponHitBox || WeaponHitBox->GetAttachParent() != Visual)
+	{
+		DestroyWeaponHitBox();
+
+		WeaponHitBox = NewObject<UBoxComponent>(Owner);
+		WeaponHitBox->SetupAttachment(Visual);
+		WeaponHitBox->RegisterComponent();
+		WeaponHitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		WeaponHitBox->SetCollisionObjectType(ECC_WorldDynamic);
+		WeaponHitBox->SetGenerateOverlapEvents(false);
+		WeaponHitBox->SetCanEverAffectNavigation(false);
+
+		UE_LOG(LogTemp, Log, TEXT("UMALWeaponComponent: runtime hit box created on %s (%s, component %s)"),
+			*Visual->GetName(), *GetNameSafe(EquippedWeapon), *GetName());
+	}
+
+	FVector Extent = EquippedWeapon->HitBoxExtent;
+	FVector Location = EquippedWeapon->HitBoxRelativeLocation;
+
+	if (EquippedWeapon->bAutoFitHitBox)
+	{
+		// Local bounds keep the box in the weapon mesh's own space, so the socket offset, scale
+		// and rotation authored on the definition all apply without a second set of numbers.
+		const FBoxSphereBounds LocalBounds = Visual->CalcBounds(FTransform::Identity);
+		Extent = LocalBounds.BoxExtent;
+
+		const int32 LengthAxis = FMath::Clamp(static_cast<int32>(EquippedWeapon->HitBoxLengthAxis), 0, 2);
+		const float Thickness = FMath::Clamp(EquippedWeapon->HitBoxScale, 0.1f, 1.0f);
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			if (Axis != LengthAxis)
+			{
+				Extent[Axis] *= Thickness;
+			}
+		}
+
+		Location = LocalBounds.Origin + EquippedWeapon->HitBoxRelativeLocation;
+	}
+
+	WeaponHitBox->SetBoxExtent(Extent, /*bUpdateOverlaps*/ false);
+	WeaponHitBox->SetRelativeLocation(Location);
+
+	UE_LOG(LogTemp, Log, TEXT("UMALWeaponComponent: runtime hit box on %s extent %s location %s"),
+		*Visual->GetName(), *Extent.ToCompactString(), *Location.ToCompactString());
+}
+
+void UMALWeaponComponent::DestroyWeaponHitBox()
+{
+	if (!WeaponHitBox)
+	{
+		return;
+	}
+
+	WeaponHitBox->DestroyComponent();
+	WeaponHitBox = nullptr;
 }
 
 UBoxComponent* UMALWeaponComponent::ResolveHitBox()

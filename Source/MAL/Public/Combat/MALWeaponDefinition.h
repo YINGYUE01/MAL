@@ -16,6 +16,15 @@ class UMALAbilitySet;
 class UMALSkillTreeDefinition;
 class AMALProjectile;
 
+/** Axis of the weapon mesh that runs along the blade, used when auto-fitting the hit box. */
+UENUM(BlueprintType)
+enum class EMALWeaponHitAxis : uint8
+{
+	X,
+	Y,
+	Z
+};
+
 /**
  * UMALWeaponDefinition
  *
@@ -120,16 +129,38 @@ public:
 	// --- Hit volume ---
 
 	/**
-	 * Half-size of the box that sweeps targets during a swing.
+	 * Fit the hit volume to the equipped weapon mesh automatically.
 	 *
-	 * The box is the primitive named UMALWeaponComponent::HitBoxComponentName on the character,
-	 * not the weapon mesh: a box gives a predictable blade length where the mesh's own collision
-	 * would be as detailed as its geometry.
+	 * On (default): the runtime box is sized from the weapon mesh's local bounds, so no hit box
+	 * has to be authored on the character and no position has to be tuned by hand. Off: the
+	 * explicit HitBoxExtent / HitBoxRelativeLocation below are used instead.
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Hit", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Hit")
+	bool bAutoFitHitBox = true;
+
+	/** Axis of the weapon mesh that runs along the blade, used when auto-fitting. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Hit", meta = (EditCondition = "bAutoFitHitBox"))
+	EMALWeaponHitAxis HitBoxLengthAxis = EMALWeaponHitAxis::X;
+
+	/**
+	 * Thickness multiplier applied to the two axes that are not HitBoxLengthAxis when auto-fitting.
+	 *
+	 * The blade axis keeps its full length; narrowing the cross-section keeps the hilt and the
+	 * guard from counting as blade volume.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Hit", meta = (EditCondition = "bAutoFitHitBox", ClampMin = "0.1", ClampMax = "1.0"))
+	float HitBoxScale = 0.9f;
+
+	/**
+	 * Half-size of the box that sweeps targets during a swing. Used when bAutoFitHitBox is off.
+	 *
+	 * The box is generated at runtime on the equipped weapon mesh; it is no longer authored on
+	 * the character blueprint.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Hit", meta = (EditCondition = "!bAutoFitHitBox", ClampMin = "1.0"))
 	FVector HitBoxExtent = FVector(32.0f, 32.0f, 32.0f);
 
-	/** Box centre relative to the weapon socket, so the volume covers the blade, not the hilt. */
+	/** Offset from the weapon mesh origin, or an extra offset on top of the fitted bounds. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Hit")
 	FVector HitBoxRelativeLocation = FVector(0.0f, -28.0f, -2.0f);
 

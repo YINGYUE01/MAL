@@ -10,6 +10,7 @@
 class UBoxComponent;
 class UNiagaraComponent;
 class UPrimitiveComponent;
+class USceneComponent;
 class UMALWeaponDefinition;
 
 /** Broadcast once per target per hit window (server only). */
@@ -54,8 +55,9 @@ public:
 	 * Open the hit window for one swing. Any window still open is closed first.
 	 *
 	 * @param ComboStep              Step index stamped on every resulting hit.
-	 * @param CollisionComponentName Name of the primitive acting as the weapon hit volume.
-	 *                               None uses HitBoxComponentName.
+	 * @param CollisionComponentName Optional explicit volume name (e.g. a shield). When empty or
+	 *                               unresolvable, the runtime box on the equipped weapon is used,
+	 *                               then the legacy character-authored HitBoxComponentName.
 	 */
 	void StartHitWindow(int32 ComboStep, FName CollisionComponentName = NAME_None);
 
@@ -177,6 +179,21 @@ private:
 	/** The hit volume box, resolved once and cached. Null when the character has none. */
 	UBoxComponent* ResolveHitBox();
 
+	/**
+	 * Primitive used for the next swing: the runtime weapon box first, then the legacy
+	 * character-authored box. Null when neither exists.
+	 */
+	UPrimitiveComponent* ResolveHitVolume();
+
+	/** Visual component the equipped definition draws, or null for skins/built-in blades. */
+	USceneComponent* GetActiveWeaponVisual() const;
+
+	/** Server only: create and size the runtime box on the equipped weapon mesh. */
+	void ApplyWeaponHitBox();
+
+	/** Destroy the runtime weapon box (unequip, EndPlay). */
+	void DestroyWeaponHitBox();
+
 	/** Remember the box the character was authored with, so unequipping can put it back. */
 	void CacheAuthoredHitBox();
 
@@ -243,6 +260,10 @@ private:
 	/** Box size and centre the blueprint authored, restored when the weapon is unequipped. */
 	FVector AuthoredHitBoxExtent = FVector::ZeroVector;
 	FVector AuthoredHitBoxLocation = FVector::ZeroVector;
+
+	/** Runtime hit box generated on the equipped weapon mesh (server only). */
+	UPROPERTY(Transient)
+	TObjectPtr<UBoxComponent> WeaponHitBox;
 
 	bool bAuthoredHitBoxCached = false;
 
