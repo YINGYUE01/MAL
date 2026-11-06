@@ -14,22 +14,22 @@ void UMALSkillNodeViewModel::Initialize(const FMALSkillNodeDefinition& InNode)
 	UE_MVVM_SET_PROPERTY_VALUE(RequiredLevel, FMath::Max(InNode.RequiredLevel, 1));
 	Tier = InNode.Tier;
 
-	TObjectPtr<UTexture2D> NodeIcon = InNode.Icon.IsNull() ? nullptr : InNode.Icon.LoadSynchronous();
-
-	// Only the icon still resolves here: the name's three-step lookup lives in
-	// MALGetSkillNodeDisplayName, which the progression component also prints in its reasons.
-	// The class default object is the only other icon source: an ungranted ability has no spec,
-	// so the node's own fields are all a locked row has to draw with.
-	if (!NodeIcon && InNode.AbilityClass)
+	// Presentation lives on the ability CDO, so a locked node still reads correctly: no spec is
+	// needed to inspect the class defaults. Nodes without an ability (placeholder/probe entries)
+	// fall back to the tag's last segment and no icon.
+	TObjectPtr<UTexture2D> NodeIcon = nullptr;
+	FText NodeDescription;
+	if (InNode.AbilityClass)
 	{
 		if (const UMALGameplayAbility* AbilityDefaults = Cast<UMALGameplayAbility>(InNode.AbilityClass->GetDefaultObject()))
 		{
 			NodeIcon = AbilityDefaults->Icon;
+			NodeDescription = AbilityDefaults->Description;
 		}
 	}
 
 	UE_MVVM_SET_PROPERTY_VALUE(DisplayName, MALGetSkillNodeDisplayName(InNode));
-	UE_MVVM_SET_PROPERTY_VALUE(Description, InNode.Description);
+	UE_MVVM_SET_PROPERTY_VALUE(Description, NodeDescription);
 	UE_MVVM_SET_PROPERTY_VALUE(Icon, NodeIcon);
 
 	// A fresh node starts locked with no explanation; the menu pushes the real state as soon as

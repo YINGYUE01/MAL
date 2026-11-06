@@ -12,7 +12,6 @@ class USkeletalMesh;
 class UAnimInstance;
 class UNiagaraSystem;
 class UAnimMontage;
-class UMALAbilitySet;
 class UMALSkillTreeDefinition;
 class AMALProjectile;
 
@@ -54,7 +53,7 @@ public:
 	 * belongs to this weapon. Matching is by hierarchy, so a node tagged MAL.Weapon.Sword also
 	 * answers a rapier tagged MAL.Weapon.Sword.Rapier.
 	 *
-	 * Empty means the weapon contributes only its GrantedAbilitySets and gates no skill nodes.
+	 * Empty means the weapon gates no skill nodes and grants no abilities.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon")
 	FGameplayTag WeaponTag;
@@ -260,23 +259,11 @@ public:
 	// --- Abilities ---
 
 	/**
-	 * Abilities this weapon hands out while it is equipped.
+	 * The skill pool that belongs to this weapon: what the skill menu draws while it is in hand,
+	 * and the only place this weapon gets abilities from.
 	 *
-	 * Granted on equip and taken back on unequip, under a source key of their own, so a skill
-	 * purchase that rebuilds the character's kit leaves them alone. This is where a weapon puts
-	 * its own swing: the same MAL.Input.LMB tag, a different ability per weapon.
-	 *
-	 * Two weapons equipped at once is not a state this models: the layer is rebuilt from the one
-	 * equipped definition, so a swap replaces rather than stacks.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Weapon|Ability")
-	TArray<TObjectPtr<UMALAbilitySet>> GrantedAbilitySets;
-
-	/**
-	 * The skill pool that belongs to this weapon: what the skill menu draws while it is in hand.
-	 *
-	 * Skills live with the weapon rather than with the class because a swap is meant to change
-	 * the whole kit. A node here is bought for this weapon and remembered under its WeaponTag, so
+	 * A node with bStartsUnlocked is granted on equip and costs nothing (basic attack, dash).
+	 * Every other node must be bought and is remembered under this weapon's WeaponTag, so
 	 * switching away hides it without refunding anything, and switching back finds it again.
 	 *
 	 * Purchases are filed by WeaponTag, so two definitions sharing a tag share their skills as

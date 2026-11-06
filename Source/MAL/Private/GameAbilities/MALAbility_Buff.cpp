@@ -20,7 +20,7 @@ UMALAbility_Buff::UMALAbility_Buff()
 	// Move/Jump so the character does not slide through the animation. Blocking is left off: a
 	// second cast mid-animation used to be allowed, and that behaviour is not this change's to
 	// alter.
-	ConfigureAbility(Tags->Ability_Buff, Tags->Input_Buff, Tags->Status_Casting, /*bBlocksSameStatusActivation*/ false);
+	ConfigureAbility(Tags->Ability_Player_Buff, Tags->Input_Attack_Buff, Tags->Status_Casting, /*bBlocksSameStatusActivation*/ false);
 
 	// Defaults so a bare Blueprint subclass works without wiring anything up. Both are meant
 	// to be pointed at assets in the project (GE_Buff_DamageUp / GE_BuffCost).

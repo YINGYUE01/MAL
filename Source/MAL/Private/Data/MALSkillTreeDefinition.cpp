@@ -6,12 +6,7 @@
 
 FText MALGetSkillNodeDisplayName(const FMALSkillNodeDefinition& Node)
 {
-	if (!Node.DisplayName.IsEmpty())
-	{
-		return Node.DisplayName;
-	}
-
-	// An ungranted ability has no spec, so its class default object is the only other source.
+	// An ungranted ability has no spec, so its class default object is the only authored source.
 	if (Node.AbilityClass)
 	{
 		const UMALGameplayAbility* AbilityDefaults = Cast<UMALGameplayAbility>(Node.AbilityClass->GetDefaultObject());

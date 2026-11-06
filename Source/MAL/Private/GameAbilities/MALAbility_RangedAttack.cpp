@@ -18,7 +18,7 @@ UMALAbility_RangedAttack::UMALAbility_RangedAttack()
 	// The generic attack tag is what the behaviour tree activates, so a ranged enemy needs no
 	// branch of its own. Owning Status.Attacking is what makes the tree wait for the shot to
 	// finish instead of re-activating mid-cast.
-	ConfigureAbility(Tags->Ability_Attack, Tags->Input_LMB, Tags->Status_Attacking);
+	ConfigureAbility(Tags->Ability_Enemy_Attack, FGameplayTag(), Tags->Status_Attacking);
 
 	ImpactCueTag = Tags->GameplayCue_Hit_Impact;
 }

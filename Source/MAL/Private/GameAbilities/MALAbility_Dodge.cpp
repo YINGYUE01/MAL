@@ -11,7 +11,7 @@ UMALAbility_Dodge::UMALAbility_Dodge()
 {
 	const UMALGameplayTags* Tags = UMALGameplayTags::Get();
 
-	ConfigureAbility(Tags->Ability_Dodge, Tags->Input_Dash, Tags->Status_Dodging);
+	ConfigureAbility(Tags->Ability_Player_Dodge, Tags->Input_Dodge, Tags->Status_Dodging);
 
 	// The activation is the i-frame window: the executor discards damage on a target holding
 	// this tag, so nothing else has to track a separate timer for it.

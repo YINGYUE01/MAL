@@ -8,7 +8,6 @@
 #include "InputActionValue.h"
 #include "MALAbilitySystemComponent.generated.h"
 
-class UMALAbilitySet;
 class UGameplayAbility;
 
 UCLASS()
@@ -24,7 +23,7 @@ public:
 	 *
 	 * One key for every weapon rather than one per definition: a character holds one weapon at a
 	 * time, so a swap clears this key and re-grants into it. Everything the character owns itself
-	 * -- class sets, bought skills -- stays under NAME_None and is untouched by a swap.
+	 * -- skill nodes -- stays under NAME_None and is untouched by a swap.
 	 */
 	static const FName WeaponAbilitySourceKey;
 
@@ -37,28 +36,14 @@ public:
 	virtual FGameplayEffectContextHandle MakeEffectContext() const override;
 
 	/**
-	 * Grant all abilities from an AbilitySet, storing the InputTag in DynamicAbilityTags.
-	 * Returns the granted spec handles so the caller can remove them later.
-	 *
-	 * SourceKey names who is handing the abilities out. ClearGrantedAbilities works one key at a
-	 * time, so a caller with a key of its own -- an equipped weapon, say -- can take its abilities
-	 * back without disturbing the character's kit.
-	 *
-	 * Server only.
-	 */
-	TArray<FGameplayAbilitySpecHandle> GrantAbilitySet(
-		const UMALAbilitySet* AbilitySet,
-		FName SourceKey = NAME_None);
-
-	/**
 	 * Grant one ability, tagging its spec with InputTag and filing the handle under SourceKey.
 	 *
-	 * The single-skill path behind both GrantAbilitySet and the skill tree. Sharing it is what
-	 * keeps the handle registry complete: ClearGrantedAbilities only clears what was recorded
-	 * here, so a skill granted around this function would survive a re-grant and stack up.
+	 * The single-skill path behind the skill tree. Sharing it is what keeps the handle registry
+	 * complete: ClearGrantedAbilities only clears what was recorded here, so a skill granted
+	 * around this function would survive a re-grant and stack up.
 	 *
 	 * Server only; returns an invalid handle when the class is null or this is not the authority.
-	 * An invalid InputTag grants the ability with no input binding.
+	 * An invalid InputTag falls back to the ability's own InputActivatedTag.
 	 */
 	FGameplayAbilitySpecHandle GrantAbility(
 		TSubclassOf<UGameplayAbility> AbilityClass,
@@ -74,7 +59,7 @@ public:
 	 * also deleted whatever an equipped weapon had granted, and GrantAbilities -- which knows
 	 * nothing about weapons -- had no way to hand it back. The abilities vanished silently.
 	 *
-	 * NAME_None is the character's own kit: the class ability sets and the bought skill nodes.
+	 * NAME_None is the character's own kit: bought skill nodes and anything granted outside a weapon.
 	 */
 	void ClearGrantedAbilities(FName SourceKey = NAME_None);
 

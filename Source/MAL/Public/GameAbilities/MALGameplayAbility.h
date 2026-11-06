@@ -72,6 +72,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|UI")
 	TObjectPtr<UTexture2D> Icon;
 
+	/** Detail text shown by menus that describe this ability (e.g. the skill tree). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability|UI", meta = (MultiLine = "true"))
+	FText Description;
+
 	/**
 	 * Evaluate a row from LevelScalingTable at the ability's current level.
 	 * Returns DefaultValue when the table/row is missing.

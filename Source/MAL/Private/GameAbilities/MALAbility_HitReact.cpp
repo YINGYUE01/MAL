@@ -25,7 +25,7 @@ UMALAbility_HitReact::UMALAbility_HitReact()
 
 	// Status.HitReacting both marks the body as busy and blocks a second reaction while this one
 	// runs. No input tag: the ability is only ever triggered by the damage event below.
-	ConfigureAbility(Tags->Ability_HitReact, FGameplayTag(), Tags->Status_HitReacting, true);
+	ConfigureAbility(Tags->Ability_Common_HitReact, FGameplayTag(), Tags->Status_HitReacting, true);
 
 	FAbilityTriggerData Trigger;
 	Trigger.TriggerTag = Tags->Event_HitReact;

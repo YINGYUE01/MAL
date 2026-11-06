@@ -25,10 +25,8 @@ namespace
 	void AppendDefaultSlotTags(TArray<FGameplayTag>& OutTags)
 	{
 		const UMALGameplayTags* Tags = UMALGameplayTags::Get();
-		OutTags.Add(Tags->Input_LMB);
-		OutTags.Add(Tags->Input_Buff);
-		OutTags.Add(Tags->Input_Defend);
-		OutTags.Add(Tags->Input_Dash);
+		OutTags.Add(Tags->Input_Attack_LMB);
+		OutTags.Add(Tags->Input_Attack_Buff);
 	}
 }
 

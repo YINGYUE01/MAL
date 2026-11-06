@@ -32,9 +32,10 @@ enum class EMALSkillNodeState : uint8
 /**
  * FMALSkillNodeDefinition
  *
- * One entry of the skill pool. Describes the skill whether or not the player owns it, which is
- * what lets the menu draw a locked node: an ungranted ability has no spec, so anything the panel
- * needs on that node has to live on the node itself.
+ * One entry of the skill pool. The node owns only what is unique to the tree: its stable identity,
+ * the ability it grants, and the progression gates. Presentation (name, description, icon) and the
+ * input binding come from the ability's class default object, so the tree cannot disagree with the
+ * ability it grants.
  */
 USTRUCT(BlueprintType)
 struct FMALSkillNodeDefinition
@@ -51,31 +52,18 @@ struct FMALSkillNodeDefinition
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill")
 	FGameplayTag SkillTag;
 
-	/** Left empty, the menu falls back to the ability's own DisplayName. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill")
-	FText DisplayName;
-
-	/** Shown in the detail panel. Lives here because abilities carry no description. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill", meta = (MultiLine = "true"))
-	FText Description;
-
-	/** Left empty, the menu falls back to the ability's own Icon. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill")
-	TSoftObjectPtr<UTexture2D> Icon;
-
-	/** The ability granted once the node is unlocked. */
+	/** The ability granted once the node is unlocked. Presentation and input come from it. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill")
 	TSubclassOf<UMALGameplayAbility> AbilityClass;
 
 	/**
-	 * Input this ability answers once granted.
+	 * True when the weapon grants this node without a purchase (basic attack, dash, ...).
 	 *
-	 * Must be a tag that is actually routed: a spec carrying an input tag no action ever sends
-	 * is granted and silently unreachable. Empty grants the ability with no input binding, which
-	 * is only useful for passive skills.
+	 * Default nodes are always owned while the weapon is equipped and never enter the save, so
+	 * they replace the old per-weapon ability sets without becoming purchases.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill")
-	FGameplayTag InputTag;
+	bool bStartsUnlocked = false;
 
 	/** Character level needed before the node can be bought. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Skill", meta = (ClampMin = "1"))
@@ -128,8 +116,9 @@ struct FMALUnlockedSkill
 };
 
 /**
- * Name to show for a node, taken from the first source that has one: the node itself, the
- * ability's class default object, then the tag's last segment.
+ * Name to show for a node, taken from the first source that has one: the ability's class default
+ * object, then the tag's last segment. Ungranted abilities have no spec, so the CDO is the only
+ * authored source for a locked row.
  *
  * Shared rather than duplicated: the menu prints it as a row's title and the progression
  * component prints the same text inside "Requires ...", so the two must not disagree about

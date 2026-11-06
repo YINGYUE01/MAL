@@ -186,13 +186,13 @@ EnhancedInput 触发 ──▶ UMALInputComponent：把 (InputTag, Value, ETrigg
 
 ```
 UMALSkillTreeDefinition (每个武器一份池)
-   └─ FMALSkillNodeDefinition { SkillTag, DisplayName, Description, Icon,
-                                AbilityClass, InputTag, RequiredLevel, Cost,
-                                Tier, Prerequisites[] }
+   └─ FMALSkillNodeDefinition { SkillTag, AbilityClass,
+                                RequiredLevel, Cost, Tier, Prerequisites[] }
 FMALUnlockedSkill { WeaponTag, SkillTag }   ← 存档与进度组件持有的购买记录
 ```
 
-* 节点必须自带展示信息：**未授予的能力在 ASC 里没有 spec，面板无从读取任何东西**。
+* 节点只保留「身份 + 授予目标 + 成长条件」；名称、描述、图标和输入绑定全部从 `AbilityClass` 的 CDO 读取，避免树与能力两份配置不一致。
+* 未授予的能力在 ASC 里没有 spec，但 CDO 可直接读取展示信息；没有 `AbilityClass` 的占位节点回退到 `SkillTag` 末段且不画图标。
 * 购买记录带 `WeaponTag` 配对：同一 `SkillTag` 出现在两把武器的池里时，扁平 tag 集合会让「在 A 上买的」静默解锁 B 的那一个。`WeaponTag` 用精确相等而非层级比较。
 * 节点身份是 `SkillTag` 而非能力类：能力可以被换皮替换/改名，而玩家的存档必须继续指向同一节点。
 * 换武器只是**隐藏**该武器的节点，不退点；切回来时按 `WeaponTag` 重新过滤授予。

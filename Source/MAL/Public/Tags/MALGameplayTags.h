@@ -131,20 +131,58 @@ public:
 	// -----------------------------------------------------------------------------
 	
 	/** Attack ability */
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
-	FGameplayTag Ability_Attack;
+	// UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
+	// FGameplayTag Ability_Attack;
 
 	/** Shared hit reaction ability, granted to players and enemies alike. */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
 	FGameplayTag Ability_HitReact;
 
-	/** Self-buff ability */
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
-	FGameplayTag Ability_Buff;
+	// --- Ownership hierarchy (new) ---
+	//
+	// Abilities are grouped by who owns them so an AI can activate "Enemy.*" without ever
+	// matching a player ability, and vice versa. Old flat tags above stay for assets that have
+	// not been migrated yet; new abilities should use the children below.
 
-	/** Dodge/dash ability. */
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
-	FGameplayTag Ability_Dodge;
+	/** Parent of every player-owned ability tag. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player")
+	FGameplayTag Ability_Player;
+
+	/** Parent of every enemy-owned ability tag. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Enemy")
+	FGameplayTag Ability_Enemy;
+
+	/** Parent of abilities shared by both sides (hit reaction, future universal actions). */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Common")
+	FGameplayTag Ability_Common;
+
+	/** Player melee attack (weapon-driven). */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player")
+	FGameplayTag Ability_Player_Attack;
+
+	/** Player dodge/dash. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player")
+	FGameplayTag Ability_Player_Dodge;
+
+	/** Player self-buff. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player")
+	FGameplayTag Ability_Player_Buff;
+
+	/** Enemy melee attack (activated by the AI). */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Enemy")
+	FGameplayTag Ability_Enemy_Attack;
+
+	/** Hit reaction owned by every character. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Common")
+	FGameplayTag Ability_Common_HitReact;
+
+	// /** Self-buff ability */
+	// UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
+	// FGameplayTag Ability_Buff;
+	//
+	// /** Dodge/dash ability. */
+	// UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability")
+	// FGameplayTag Ability_Dodge;
 
 	// -----------------------------------------------------------------------------
 	// Cooldown Tags - Granted by a cooldown GameplayEffect for its whole duration
@@ -164,49 +202,82 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown")
 	FGameplayTag Cooldown_Buff;
 
+	// --- Ownership hierarchy (new) ---
+
+	/** Parent of player cooldown tags. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
+	FGameplayTag Cooldown_Player;
+
+	/** Parent of enemy cooldown tags. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Enemy")
+	FGameplayTag Cooldown_Enemy;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
+	FGameplayTag Cooldown_Player_Attack;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
+	FGameplayTag Cooldown_Player_Buff;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
+	FGameplayTag Cooldown_Player_Combo2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
+	FGameplayTag Cooldown_Player_Whirlwind;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Enemy")
+	FGameplayTag Cooldown_Enemy_Attack;
+
 	// -----------------------------------------------------------------------------
 	// Input Tags - Represent input actions
 	// -----------------------------------------------------------------------------
 	
 	/** Move input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_Move;
+	FGameplayTag Input_Movement_Move;
 
 	/** Look input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_Look;
+	FGameplayTag Input_Movement_Look;
 
 	/** Jump input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_Jump;
+	FGameplayTag Input_Movement_Jump;
 
 	/** Attack input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_LMB;
+	FGameplayTag Input_Attack_LMB;
 
-	/** Defend input */
+	// --- Action-named input tags (new) ---
+
+	/** Primary attack (LMB). */
+	// UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
+	// FGameplayTag Input_PrimaryAttack;
+	//
+	// /** Secondary/heavy attack (RMB). */
+	// UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
+	// FGameplayTag Input_SecondaryAttack;
+	
+
+	/** Dodge/dash. */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_Defend;
-
-	/** Dash input */
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_Dash;
-
+	FGameplayTag Input_Dodge;
+	
+	
 	/** Lock-on toggle; not an ability input. */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
 	FGameplayTag Input_LockOn;
 
 	/** Buff input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_Buff;
+	FGameplayTag Input_Attack_Buff;
 
 	/** Opens or closes the attribute menu; not an ability input. */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_AttributeMenu;
+	FGameplayTag Input_HUD_AttributeMenu;
 
 	/** Opens or closes the skill tree menu; not an ability input. */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_SkillMenu;
+	FGameplayTag Input_HUD_SkillMenu;
 
 	/** Swaps to the next weapon in the loadout; not an ability input. */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")

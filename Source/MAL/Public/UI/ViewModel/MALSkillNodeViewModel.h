@@ -21,9 +21,9 @@ class UTexture2D;
  * object here holding a player state. Splitting it that way is what allows one node view model
  * per node while a single instance per row widget keeps its own data.
  *
- * Display data falls back to the ability's class default object when the node leaves it blank,
- * so a tree an author filled in with only tags and classes still reads properly. Description
- * has no fallback: an ability carries none.
+ * Display data -- name, description and icon -- is read from the ability's class default object,
+ * so a locked row needs no granted spec and the tree cannot disagree with the ability. A node with
+ * no ability class falls back to its tag's last segment and draws no icon.
  */
 UCLASS(BlueprintType)
 class MAL_API UMALSkillNodeViewModel : public UMALUIViewModelBase
@@ -69,16 +69,15 @@ public:
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "MAL|UI|Skill")
 	FText DisplayName;
 
-	/** Detail-panel body text. Empty unless the node defines one. */
+	/** Detail-panel body text, taken from the ability's Description. */
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "MAL|UI|Skill")
 	FText Description;
 
 	/**
-	 * Resolved icon, or null when neither the node nor its ability supplies one.
+	 * Resolved icon, or null when the ability supplies none.
 	 *
-	 * A hard pointer rather than the soft one the definition holds: a view binding cannot
-	 * resolve a TSoftObjectPtr into a brush, and the node widget would then have to fetch it
-	 * itself.
+	 * A hard pointer rather than a soft one: a view binding cannot resolve a TSoftObjectPtr into a
+	 * brush, so the CDO's icon is copied here at Initialize.
 	 */
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "MAL|UI|Skill")
 	TObjectPtr<UTexture2D> Icon;

@@ -25,6 +25,50 @@
 
 namespace
 {
+	/** Resolve a skill tag by name; invalid when the tag is not registered. */
+	FGameplayTag SkillTagByName(const TCHAR* TagName)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(TagName), /*ErrorIfNotFound*/ false);
+	}
+
+	/**
+	 * Translate a pre-namespace skill tag into MAL.Skill.* using the weapon that owns it.
+	 *
+	 * Saves written before the split stored ability tags as node identities. The same legacy tag
+	 * (MAL.Ability.Combo2) appeared in two weapon trees, so the mapping has to be per weapon.
+	 * Unknown or unregistered results keep the original tag rather than dropping the purchase.
+	 */
+	FGameplayTag MigrateLegacySkillTag(const FGameplayTag& WeaponTag, const FGameplayTag& SkillTag)
+	{
+		const FName Legacy = SkillTag.GetTagName();
+		if (!Legacy.ToString().StartsWith(TEXT("MAL.Ability.")))
+		{
+			return SkillTag;
+		}
+
+		FGameplayTag Mapped;
+		if (Legacy == FName(TEXT("MAL.Ability.Combo2")))
+		{
+			Mapped = (WeaponTag == SkillTagByName(TEXT("MAL.Weapon.Scythe")))
+				? SkillTagByName(TEXT("MAL.Skill.Scythe.Combo1"))
+				: SkillTagByName(TEXT("MAL.Skill.Sword.Combo2"));
+		}
+		else if (Legacy == FName(TEXT("MAL.Ability.Buff")))
+		{
+			Mapped = SkillTagByName(TEXT("MAL.Skill.Sword.Empower"));
+		}
+		else if (Legacy == FName(TEXT("MAL.Ability.Whirlwind")))
+		{
+			Mapped = SkillTagByName(TEXT("MAL.Skill.Scythe.Whirlwind"));
+		}
+		else if (Legacy == FName(TEXT("MAL.Ability.SwordDrill")))
+		{
+			Mapped = SkillTagByName(TEXT("MAL.Skill.Sword.Drill"));
+		}
+
+		return Mapped.IsValid() ? Mapped : SkillTag;
+	}
+
 	/**
 	 * Add Delta to the stat's base value.
 	 *
@@ -485,6 +529,18 @@ bool UMALProgressionComponent::IsSkillUnlocked(FGameplayTag SkillTag) const
 		return false;
 	}
 
+	// Default nodes are owned by definition and never enter the save.
+	if (const UMALSkillTreeDefinition* Tree = Weapon->SkillTree)
+	{
+		if (const FMALSkillNodeDefinition* Node = Tree->FindNode(SkillTag))
+		{
+			if (Node->bStartsUnlocked)
+			{
+				return true;
+			}
+		}
+	}
+
 	return UnlockedSkills.ContainsByPredicate(
 		[Weapon, SkillTag](const FMALUnlockedSkill& Unlocked)
 		{
@@ -661,7 +717,25 @@ void UMALProgressionComponent::SetUnlockedSkills(const TArray<FMALUnlockedSkill>
 		return;
 	}
 
-	UnlockedSkills = InSkills;
+	UnlockedSkills.Reset();
+
+	for (const FMALUnlockedSkill& Skill : InSkills)
+	{
+		FMALUnlockedSkill Migrated = Skill;
+		Migrated.SkillTag = MigrateLegacySkillTag(Skill.WeaponTag, Skill.SkillTag);
+
+		// A save can carry both the old and the new tag for the same purchase. Keep one.
+		const bool bAlreadyPresent = UnlockedSkills.ContainsByPredicate(
+			[&Migrated](const FMALUnlockedSkill& Existing)
+			{
+				return Existing.WeaponTag == Migrated.WeaponTag && Existing.SkillTag == Migrated.SkillTag;
+			});
+
+		if (!bAlreadyPresent)
+		{
+			UnlockedSkills.Add(Migrated);
+		}
+	}
 
 	RefreshGrantedAbilities();
 

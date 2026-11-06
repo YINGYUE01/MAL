@@ -2,7 +2,6 @@
 
 #include "Components/MALAbilitySystemComponent.h"
 #include "GameAbilities/MALGameplayAbility.h"
-#include "Data/MALAbilitySet.h"
 #include "AbilitySystem/MALGameplayEffectContext.h"
 #include "GameplayTagContainer.h"
 
@@ -40,49 +39,6 @@ FGameplayEffectContextHandle UMALAbilitySystemComponent::MakeEffectContext() con
 	return Context;
 }
 
-TArray<FGameplayAbilitySpecHandle> UMALAbilitySystemComponent::GrantAbilitySet(const UMALAbilitySet* AbilitySet, FName SourceKey)
-{
-	TArray<FGameplayAbilitySpecHandle> GrantedHandles;
-
-	if (!AbilitySet || !IsOwnerActorAuthoritative())
-	{
-		return GrantedHandles;
-	}
-
-	UE_LOG(LogTemp, Verbose, TEXT("MALASC::GrantAbilitySet %s -> %s under '%s'"),
-		*GetName(), *GetNameSafe(AbilitySet), *SourceKey.ToString());
-
-	for (const FMALAbilitySetEntry& Entry : AbilitySet->Abilities)
-	{
-		if (!Entry.AbilityClass)
-		{
-			continue;
-		}
-
-		// An override on the set entry wins over the ability's own tag.
-		FGameplayTag InputTag = Entry.OverrideInputTag;
-		if (!InputTag.IsValid())
-		{
-			if (const UMALGameplayAbility* MALAbility =
-				Cast<UMALGameplayAbility>(Entry.AbilityClass->GetDefaultObject()))
-			{
-				InputTag = MALAbility->InputActivatedTag;
-			}
-		}
-
-		const FGameplayAbilitySpecHandle Handle = GrantAbility(Entry.AbilityClass, InputTag, Entry.StartingLevel, SourceKey);
-		if (Handle.IsValid())
-		{
-			GrantedHandles.Add(Handle);
-		}
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("MALASC::GrantAbilitySet %s: granted %d abilities under '%s'"),
-		*GetName(), GrantedHandles.Num(), *SourceKey.ToString());
-
-	return GrantedHandles;
-}
-
 FGameplayAbilitySpecHandle UMALAbilitySystemComponent::GrantAbility(
 	TSubclassOf<UGameplayAbility> AbilityClass, FGameplayTag InputTag, int32 Level, FName SourceKey)
 {
@@ -92,6 +48,16 @@ FGameplayAbilitySpecHandle UMALAbilitySystemComponent::GrantAbility(
 	}
 
 	FGameplayAbilitySpec AbilitySpec(AbilityClass, FMath::Max(Level, 1));
+
+	// An empty override falls back to the ability's own input tag, so callers that only know the
+	// class (e.g. skill-tree nodes) do not need to duplicate it.
+	if (!InputTag.IsValid())
+	{
+		if (const UMALGameplayAbility* MALAbility = Cast<UMALGameplayAbility>(AbilityClass->GetDefaultObject()))
+		{
+			InputTag = MALAbility->InputActivatedTag;
+		}
+	}
 
 	// Set BEFORE GiveAbility so the tag is part of the spec's initial replication payload
 	// (DynamicAbilityTags are replicated with the spec).

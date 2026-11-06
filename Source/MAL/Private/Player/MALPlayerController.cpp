@@ -232,7 +232,7 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 	const UMALUISubsystem* UISubsystem = ULocalPlayer::GetSubsystem<UMALUISubsystem>(GetLocalPlayer());
 	const bool bMenuOpen = UISubsystem && UISubsystem->IsMenuOpen();
 
-	if (InputTag == GameplayTags->Input_Move)
+	if (InputTag == GameplayTags->Input_Movement_Move)
 	{
 		if (bMovementLocked || bMenuOpen)
 		{
@@ -251,7 +251,7 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 			CurrentPawn->AddMovementInput(RightDir, MoveInput.X);
 		}
 	}
-	else if (InputTag == GameplayTags->Input_Look)
+	else if (InputTag == GameplayTags->Input_Movement_Look)
 	{
 		if (bMenuOpen)
 		{
@@ -275,7 +275,7 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 			LockOnComponent->ToggleLock();
 		}
 	}
-	else if (InputTag == GameplayTags->Input_Jump)
+	else if (InputTag == GameplayTags->Input_Movement_Jump)
 	{
 		if (bMovementLocked || bMenuOpen)
 		{
@@ -294,7 +294,7 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 			}
 		}
 	}
-	else if (InputTag == GameplayTags->Input_AttributeMenu)
+	else if (InputTag == GameplayTags->Input_HUD_AttributeMenu)
 	{
 		// Started only: triggering on the repeat rate would flicker the panel while the key is held.
 		if (EventType == ETriggerEvent::Started)
@@ -302,7 +302,7 @@ void AMALPlayerController::HandleInputActionEvent(FGameplayTag InputTag, const F
 			ToggleAttributeMenu();
 		}
 	}
-	else if (InputTag == GameplayTags->Input_SkillMenu)
+	else if (InputTag == GameplayTags->Input_HUD_SkillMenu)
 	{
 		// Started only, for the same reason as the attribute key above.
 		if (EventType == ETriggerEvent::Started)
@@ -629,7 +629,7 @@ void AMALPlayerController::MALDODGE()
 
 	// Pressed then released on the next tick: ProcessAbilityInput needs a frame to turn the
 	// buffered press into an activation, and the release only clears the held state.
-	MALASC->AbilityInputTagPressed(UMALGameplayTags::Get()->Input_Dash, FInputActionValue());
+	MALASC->AbilityInputTagPressed(UMALGameplayTags::Get()->Input_Dodge, FInputActionValue());
 
 	World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
 	{
@@ -640,7 +640,7 @@ void AMALPlayerController::MALDODGE()
 
 		if (ReleaseASC)
 		{
-			ReleaseASC->AbilityInputTagReleased(UMALGameplayTags::Get()->Input_Dash, FInputActionValue());
+			ReleaseASC->AbilityInputTagReleased(UMALGameplayTags::Get()->Input_Dodge, FInputActionValue());
 		}
 	}));
 
@@ -695,9 +695,9 @@ void AMALPlayerController::MALATTACK()
 	}
 
 	FGameplayTagContainer AttackTags;
-	AttackTags.AddTag(UMALGameplayTags::Get()->Ability_Attack);
+	AttackTags.AddTag(UMALGameplayTags::Get()->Ability_Player_Attack);
 
-	const bool bActivated = MALASC->TryActivateAbilitiesByTag(AttackTags);
+	bool bActivated = MALASC->TryActivateAbilitiesByTag(AttackTags);
 	UE_LOG(LogTemp, Log, TEXT("MALATTACK: activated=%d"), bActivated ? 1 : 0);
 }
 

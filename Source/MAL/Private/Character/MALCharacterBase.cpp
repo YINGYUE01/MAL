@@ -13,7 +13,6 @@
 #include "Components/MALProgressionComponent.h"
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
 #include "Data/MALProgressionDefinition.h"
-#include "Data/MALAbilitySet.h"
 #include "Data/MALSkillTreeDefinition.h"
 #include "GameAbilities/MALGameplayAbility.h"
 #include "GameAbilities/MALAbility_MeleeAttack.h"
@@ -815,36 +814,41 @@ void AMALCharacterBase::RefreshWeaponGrantedAbilities()
 		return;
 	}
 
-	for (const TObjectPtr<UMALAbilitySet>& AbilitySet : Weapon->GrantedAbilitySets)
-	{
-		if (AbilitySet)
-		{
-			MALASC->GrantAbilitySet(AbilitySet, UMALAbilitySystemComponent::WeaponAbilitySourceKey);
-		}
-	}
-
-	// The tree is the weapon's own, and so is every purchase in it: what is left in hand keeps
-	// exactly the nodes that were bought for it. A weapon with no tree simply has no earned
-	// skills beyond its ability sets.
+	// The tree is the weapon's only ability source now: default nodes replace the old ability
+	// sets, purchased nodes are filtered by the weapon's own save record.
 	const UMALSkillTreeDefinition* Tree = Weapon->SkillTree;
-	const AMALPlayerState* MALPlayerState = GetPlayerState<AMALPlayerState>();
-	const UMALProgressionComponent* Progression = MALPlayerState ? MALPlayerState->GetProgressionComponent() : nullptr;
-	if (!Tree || !Progression)
+	if (!Tree)
 	{
 		return;
 	}
 
-	// Already narrowed to this weapon: the record is filed per weapon, so a tag never arrives
-	// here from another weapon's tree.
-	for (const FGameplayTag& SkillTag : Progression->GetUnlockedSkillsForEquippedWeapon())
+	const AMALPlayerState* MALPlayerState = GetPlayerState<AMALPlayerState>();
+	const UMALProgressionComponent* Progression = MALPlayerState ? MALPlayerState->GetProgressionComponent() : nullptr;
+
+	// One class can appear as both a default node and a purchase (or in two nodes); granting it
+	// twice would leave two specs answering the same input.
+	TSet<UClass*> GrantedClasses;
+	for (const FMALSkillNodeDefinition& Node : Tree->Nodes)
 	{
-		const FMALSkillNodeDefinition* Node = Tree->FindNode(SkillTag);
-		if (!Node || !Node->AbilityClass)
+		if (!Node.AbilityClass)
 		{
 			continue;
 		}
 
-		MALASC->GrantAbility(Node->AbilityClass, Node->InputTag, 1,
+		const bool bPurchased = Progression && Progression->IsSkillUnlocked(Node.SkillTag);
+		if (!Node.bStartsUnlocked && !bPurchased)
+		{
+			continue;
+		}
+
+		if (GrantedClasses.Contains(Node.AbilityClass.Get()))
+		{
+			continue;
+		}
+		GrantedClasses.Add(Node.AbilityClass.Get());
+
+		// Presentation and input live on the ability; the node only supplies identity and gates.
+		MALASC->GrantAbility(Node.AbilityClass, FGameplayTag(), 1,
 			UMALAbilitySystemComponent::WeaponAbilitySourceKey);
 	}
 }
