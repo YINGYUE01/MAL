@@ -6,6 +6,7 @@
 #include "Abilities/GameplayAbility.h"
 #include "GameplayTagContainer.h"
 #include "InputActionValue.h"
+#include "TimerManager.h"
 #include "MALGameplayAbility.generated.h"
 class UAbilityTask_PlayMontageAndWait;
 class UAnimMontage;
@@ -44,6 +45,19 @@ class MAL_API UMALGameplayAbility : public UGameplayAbility
 
 public:
 	UMALGameplayAbility();
+
+	/**
+	 * Clear the montage watchdog and hand the end to the engine.
+	 *
+	 * Subclasses still override this for their own cleanup; every path eventually reaches this
+	 * one through Super, so the watchdog cannot outlive the ability.
+	 */
+	virtual void EndAbility(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo,
+		bool bReplicateEndAbility,
+		bool bWasCancelled) override;
 
 	/** Which input tag activates this ability (e.g. Input.Attack) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Ability")
@@ -199,4 +213,17 @@ protected:
 
 	UFUNCTION()
 	void HandleMontageCancelled();
+
+	/**
+	 * Fail-safe for a montage that never reports completion/interruption.
+	 *
+	 * PlayMontageAndWait normally ends the ability from its delegates. If the montage is
+	 * swallowed by an animation-layer/slot problem, no delegate arrives and every
+	 * ActivationOwnedTag (Status.Attacking, Status.HitReacting, ...) stays on the ASC forever.
+	 * The watchdog forces the same end path one beat after the montage should have finished.
+	 */
+	void HandleMontageTimeout();
+
+	/** Armed when a montage starts, cleared on every montage end or ability end. */
+	FTimerHandle MontageTimeoutHandle;
 };

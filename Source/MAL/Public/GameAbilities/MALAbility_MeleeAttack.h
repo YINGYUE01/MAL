@@ -235,6 +235,12 @@ protected:
 
 	uint8 PreviousRootMotionMode = 0;
 
+	/** True only while this activation is the one that suspended root motion. */
+	bool bSuspendedRootMotion = false;
+
+	/** Hand the root-motion channel back; safe to call on every end path. */
+	void RestoreLungeRootMotion();
+
 	/** One interpolation step; clears itself when the authored window is over. */
 	void StepLunge();
 

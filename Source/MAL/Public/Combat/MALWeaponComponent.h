@@ -188,6 +188,15 @@ private:
 	void ReleaseCollision();
 
 	/**
+	 * Report targets that were already inside the weapon volume when the window opened.
+	 *
+	 * Enabling collision does not reliably dispatch BeginOverlap for overlaps that already
+	 * existed (the common case at point-blank range), so the opening frame has to seed the hit
+	 * list from the current overlap set as well.
+	 */
+	void ProcessExistingOverlaps();
+
+	/**
 	 * Weapons the character can cycle through, in wheel order. The first entry is also the weapon
 	 * the character starts with, applied on the server in BeginPlay.
 	 *

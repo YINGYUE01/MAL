@@ -6,6 +6,7 @@
 #include "Components/MALAbilitySystemComponent.h"
 #include "Engine/CurveTable.h"
 #include "Curves/RealCurve.h"
+#include "Engine/World.h"
 
 UMALGameplayAbility::UMALGameplayAbility()
 {
@@ -67,6 +68,12 @@ UAbilityTask_PlayMontageAndWait* UMALGameplayAbility::PlayAbilityMontage(FName S
 		return nullptr;
 	}
 
+	// A previous activation/task may have left a watchdog; never let two time out one ability.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(MontageTimeoutHandle);
+	}
+
 	UAbilityTask_PlayMontageAndWait* Task = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
 		this,
 		NAME_None,
@@ -88,6 +95,16 @@ UAbilityTask_PlayMontageAndWait* UMALGameplayAbility::PlayAbilityMontage(FName S
 	Task->OnCancelled.AddDynamic(this, &UMALGameplayAbility::HandleMontageCancelled);
 	Task->ReadyForActivation();
 
+	// Fail-safe. The montage is expected to end the ability through the delegates above; this
+	// only fires when no delegate arrives (bad slot, animation layer swallowing the montage,
+	// external StopAnimMontage without an interrupt callback, ...).
+	if (UWorld* World = GetWorld())
+	{
+		const float Timeout = FMath::Max(Montage->GetPlayLength(), 0.1f) + 0.5f;
+		World->GetTimerManager().SetTimer(
+			MontageTimeoutHandle, this, &UMALGameplayAbility::HandleMontageTimeout, Timeout, false);
+	}
+
 	return Task;
 }
 
@@ -108,8 +125,43 @@ void UMALGameplayAbility::HandleMontageCancelled()
 
 void UMALGameplayAbility::OnAbilityMontageEnded(bool bInterrupted)
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(MontageTimeoutHandle);
+	}
+
 	// Nothing else is driving this ability: the animation running out is the end of it.
 	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, bInterrupted);
+}
+
+void UMALGameplayAbility::HandleMontageTimeout()
+{
+	if (!IsActive())
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("%s: montage %s never reported an end; forcing EndAbility so owned tags are released. Tags: %s"),
+		*GetName(), *GetNameSafe(GetAbilityMontage()), *GetAssetTags().ToString());
+
+	// Route through the virtual so subclasses (e.g. Buff) can clear their own timers too.
+	OnAbilityMontageEnded(true);
+}
+
+void UMALGameplayAbility::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility,
+	bool bWasCancelled)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(MontageTimeoutHandle);
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
 bool UMALGameplayAbility::CommitAbilityOrEnd(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)

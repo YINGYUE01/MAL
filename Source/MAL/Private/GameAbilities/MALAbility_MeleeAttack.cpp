@@ -139,11 +139,7 @@ void UMALAbility_MeleeAttack::EndAbility(
 
 	// Restore root motion if the ability ended mid-lunge; leaving it suspended would break
 	// every later animation that expects to move the capsule.
-	if (UAnimInstance* AnimInstance = LungeAnimInstance.Get())
-	{
-		AnimInstance->RootMotionMode = static_cast<ERootMotionMode::Type>(PreviousRootMotionMode);
-	}
-	LungeAnimInstance = nullptr;
+	RestoreLungeRootMotion();
 
 	// Stop any in-flight lunge explicitly; the task is also destroyed by EndAbility, but
 	// ending it here guarantees the root motion source is removed before the movement mode
@@ -398,9 +394,21 @@ void UMALAbility_MeleeAttack::ApplyLunge()
 	{
 		if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
 		{
+			// A previous activation may have leaked an IgnoreRootMotion state (for example if
+			// its anim instance was replaced before EndAbility could restore it). Never capture
+			// Ignore as the value to restore: doing so turns one leak into a permanent one.
+			if (AnimInstance->RootMotionMode == ERootMotionMode::IgnoreRootMotion)
+			{
+				UE_LOG(LogTemp, Warning,
+					TEXT("%s: found leaked IgnoreRootMotion on %s; restoring montage root motion before lunge"),
+					*GetName(), *GetNameSafe(AnimInstance));
+				AnimInstance->RootMotionMode = ERootMotionMode::RootMotionFromMontagesOnly;
+			}
+
 			LungeAnimInstance = AnimInstance;
 			PreviousRootMotionMode = static_cast<uint8>(AnimInstance->RootMotionMode);
 			AnimInstance->RootMotionMode = ERootMotionMode::IgnoreRootMotion;
+			bSuspendedRootMotion = true;
 		}
 	}
 
@@ -444,15 +452,34 @@ void UMALAbility_MeleeAttack::StepLunge()
 		World->GetTimerManager().ClearTimer(LungeStepTimer);
 
 		// Hand the root motion channel back to the animation.
-		if (UAnimInstance* AnimInstance = LungeAnimInstance.Get())
-		{
-			AnimInstance->RootMotionMode = static_cast<ERootMotionMode::Type>(PreviousRootMotionMode);
-		}
-		LungeAnimInstance = nullptr;
+		RestoreLungeRootMotion();
 
 		UE_LOG(LogTemp, Log, TEXT("%s: lunge end, moved %.1f cm (target %.0f)"),
 			*GetName(), FVector::Dist2D(LungeStartLocation, Character->GetActorLocation()), LungeDistance);
 	}
+}
+
+void UMALAbility_MeleeAttack::RestoreLungeRootMotion()
+{
+	if (!bSuspendedRootMotion)
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = LungeAnimInstance.Get())
+	{
+		ERootMotionMode::Type RestoreMode = static_cast<ERootMotionMode::Type>(PreviousRootMotionMode);
+		if (RestoreMode == ERootMotionMode::IgnoreRootMotion)
+		{
+			// Defensive: an old build may have captured Ignore. Never restore into the leak.
+			RestoreMode = ERootMotionMode::RootMotionFromMontagesOnly;
+		}
+
+		AnimInstance->RootMotionMode = RestoreMode;
+	}
+
+	LungeAnimInstance = nullptr;
+	bSuspendedRootMotion = false;
 }
 
 void UMALAbility_MeleeAttack::OnLungeFinished()

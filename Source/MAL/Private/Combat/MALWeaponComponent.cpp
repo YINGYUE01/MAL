@@ -269,15 +269,20 @@ void UMALWeaponComponent::StartHitWindow(int32 ComboStep)
 	HitActors.Reset();
 	bHitWindowOpen = true;
 
-	// QueryOnly + Pawn overlap: the weapon volume never blocks the world, it only reports
-	// characters passing through it during the swing.
-	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	// Configure responses BEFORE enabling collision, then enable last. Enabling first would run
+	// UpdateOverlaps against the default all-Ignore responses, after which a target already inside
+	// the blade never receives a BeginOverlap. That is the point-blank miss, not a damage bug.
 	CollisionComponent->SetCollisionObjectType(ECC_WorldDynamic);
 	CollisionComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
 	CollisionComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	CollisionComponent->SetGenerateOverlapEvents(true);
+	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 
 	CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &UMALWeaponComponent::HandleOverlapBegin);
+
+	// Seed from overlaps that were already present. BeginOverlap above only covers entries that
+	// happen after this point.
+	ProcessExistingOverlaps();
 
 	UE_LOG(LogTemp, Log, TEXT("UMALWeaponComponent::StartHitWindow - %s opened on %s (%s, step %d, extent %s)"),
 		*Owner->GetName(), *CollisionComponent->GetName(), *GetNameSafe(EquippedWeapon), ComboStep,
@@ -504,6 +509,33 @@ void UMALWeaponComponent::DestroyWeaponHitBox()
 
 	WeaponHitBox->DestroyComponent();
 	WeaponHitBox = nullptr;
+}
+
+void UMALWeaponComponent::ProcessExistingOverlaps()
+{
+	if (!CollisionComponent || !bHitWindowOpen)
+	{
+		return;
+	}
+
+	// Collision was just enabled with the final response setup. UpdateOverlaps builds the current
+	// overlap set; GetOverlappingComponents then exposes it without waiting for a new entry event.
+	CollisionComponent->UpdateOverlaps();
+
+	TArray<UPrimitiveComponent*> OverlappingComponents;
+	CollisionComponent->GetOverlappingComponents(OverlappingComponents);
+
+	for (UPrimitiveComponent* OtherComp : OverlappingComponents)
+	{
+		if (OtherComp)
+		{
+			HandleOverlapBegin(CollisionComponent, OtherComp->GetOwner(), OtherComp,
+				/*OtherBodyIndex*/ 0, /*bFromSweep*/ false, FHitResult());
+		}
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("UMALWeaponComponent %s: %d existing overlap component(s) at hit-window open."),
+		*GetNameSafe(GetOwner()), OverlappingComponents.Num());
 }
 
 void UMALWeaponComponent::ReleaseCollision()
