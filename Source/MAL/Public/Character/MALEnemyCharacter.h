@@ -9,6 +9,8 @@
 #include "MALEnemyCharacter.generated.h"
 
 class UMALWorldWidgetComponent;
+class UMALBossAttackSelectorComponent;
+class UMALBossAttackSet;
 class UGameplayAbility;
 
 /**
@@ -35,6 +37,17 @@ public:
 	TObjectPtr<UMALWorldWidgetComponent> HealthBarWidget;
 
 	/**
+	 * Optional Boss move set. Leave empty on regular enemies; the selector component is inert
+	 * without it, so every enemy can share one character class.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss")
+	TObjectPtr<UMALBossAttackSet> BossAttackSet;
+
+	/** Server-side Boss attack selector; only active when BossAttackSet is assigned. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Boss")
+	TObjectPtr<UMALBossAttackSelectorComponent> BossAttackSelector;
+
+	/**
 	 * Abilities every instance of this enemy starts with.
 	 *
 	 * An enemy has no weapon-driven kit and no class definition, so this list is its whole
@@ -53,6 +66,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MAL|Abilities")
 	bool TryActivateAbilityByTag(FGameplayTag AbilityTag);
+
+	/**
+	 * Activate a granted ability by class.
+	 *
+	 * Preferred by the Boss selector: multiple Boss attacks can share a tag, but a class is a
+	 * single spec, so this activates exactly one attack instead of every tag sibling.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MAL|Abilities")
+	bool TryActivateAbilityByClass(TSubclassOf<UGameplayAbility> AbilityClass);
 
 protected:
 	/** Server only: base clears the legacy layer and rebuilds the weapon, then grants InitialAbilities. */

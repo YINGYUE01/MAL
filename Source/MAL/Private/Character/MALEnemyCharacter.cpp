@@ -5,7 +5,11 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/MALAbilitySystemComponent.h"
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
+#include "AI/MALBossAttackSelectorComponent.h"
 #include "AI/MALEnemyAIController.h"
+#include "AIController.h"
+#include "BehaviorTree/BlackboardComponent.h"
+#include "Data/MALBossAttackSet.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "UI/Widgets/MALWorldWidgetComponent.h"
 
@@ -28,6 +32,10 @@ AMALEnemyCharacter::AMALEnemyCharacter()
 	// make the bar jitter.
 	HealthBarWidget = CreateDefaultSubobject<UMALWorldWidgetComponent>(TEXT("HealthBarWidget"));
 	HealthBarWidget->SetupAttachment(GetCapsuleComponent());
+
+	// Inert until a Boss Blueprint assigns BossAttackSet; keeping it on the shared class avoids a
+	// second Boss character class just to host one component.
+	BossAttackSelector = CreateDefaultSubobject<UMALBossAttackSelectorComponent>(TEXT("BossAttackSelector"));
 	HealthBarWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 110.0f));
 
 	// Possession is left to the engine and to Blueprint overrides; the controller class is an
@@ -73,9 +81,9 @@ void AMALEnemyCharacter::GrantAbilities()
 	}
 }
 
-bool AMALEnemyCharacter::TryActivateAbilityByTag(FGameplayTag AbilityTag)
+bool AMALEnemyCharacter::TryActivateAbilityByClass(TSubclassOf<UGameplayAbility> AbilityClass)
 {
-	if (!AbilityTag.IsValid())
+	if (!AbilityClass)
 	{
 		return false;
 	}
@@ -86,8 +94,56 @@ bool AMALEnemyCharacter::TryActivateAbilityByTag(FGameplayTag AbilityTag)
 		return false;
 	}
 
-	FGameplayTagContainer AbilityTags;
-	AbilityTags.AddTag(AbilityTag);
+	return MALASC->TryActivateAbilityByClass(AbilityClass, /*bAllowRemoteActivation*/ true);
+}
 
-	return MALASC->TryActivateAbilitiesByTag(AbilityTags, /*bAllowRemoteActivation*/ true);
+bool AMALEnemyCharacter::TryActivateAbilityByTag(FGameplayTag AbilityTag)
+{
+	// Bosses use the existing BT attack task as a trigger, but the selector decides which move
+	// actually runs. Intercepting here means the Blueprint tree needs no new node: its fixed
+	// Enemy.Attack2 call becomes "ask the Boss selector", while regular enemies keep the old
+	// tag activation path.
+	if (BossAttackSet && BossAttackSelector)
+	{
+		AActor* Target = nullptr;
+		if (const AAIController* AI = Cast<AAIController>(GetController()))
+		{
+			if (AActor* FocusActor = AI->GetFocusActor())
+			{
+				Target = FocusActor;
+			}
+			else if (const UBlackboardComponent* Blackboard = AI->GetBlackboardComponent())
+			{
+				Target = Cast<AActor>(Blackboard->GetValueAsObject(TEXT("TargetActor")));
+			}
+		}
+
+		FMALBossAttackEntry SelectedAttack;
+		FString Debug;
+		if (!BossAttackSelector->SelectAttack(Target, SelectedAttack, Debug))
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("AMALEnemyCharacter %s: Boss select failed: %s"),
+				*GetName(), *Debug);
+			return false;
+		}
+
+		return BossAttackSelector->ActivateLastSelectedAttack();
+	}
+	return false;
+	//
+	// if (!AbilityTag.IsValid())
+	// {
+	// 	return false;
+	// }
+	//
+	// UMALAbilitySystemComponent* MALASC = GetMALAbilitySystemComponent();
+	// if (!MALASC)
+	// {
+	// 	return false;
+	// }
+	//
+	// FGameplayTagContainer AbilityTags;
+	// AbilityTags.AddTag(AbilityTag);
+	//
+	// return MALASC->TryActivateAbilitiesByTag(AbilityTags, /*bAllowRemoteActivation*/ true);
 }

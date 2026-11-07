@@ -74,6 +74,7 @@ void UMALAbility_HitReact::ActivateAbility(
 	// old Status.Attacking/Status.Casting tags therefore cancelled nothing: an attack kept its
 	// montage task alive under the flinch, and whichever montage lost the slot could leave its
 	// owned status tag behind. Cancel by ability identity instead.
+	
 	if (UMALAbilitySystemComponent* AbilitySystem = Character->GetMALAbilitySystemComponent())
 	{
 		const UMALGameplayTags* Tags = UMALGameplayTags::Get();
