@@ -161,7 +161,7 @@ void UMALAbility_RangedAttack::FireProjectile()
 		return;
 	}
 
-	bFired = true;
+	//bFired = true;
 
 	// Spawn where the weapon points; a character without a weapon falls back to its own body,
 	// which keeps a bare ranged enemy firing from its chest instead of from the world origin.
