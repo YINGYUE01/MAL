@@ -30,4 +30,8 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Blackboard")
 	FBlackboardKeySelector SelectedAttackClassKey;
+
+	/** Writes the selected entry's PreferredRange so the tree can move to its ideal distance. */
+	UPROPERTY(EditAnywhere, Category = "Blackboard")
+	FBlackboardKeySelector PreferredRangeKey;
 };

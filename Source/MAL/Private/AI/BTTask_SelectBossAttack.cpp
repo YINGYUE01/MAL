@@ -5,6 +5,7 @@
 #include "AI/MALBossAttackSelectorComponent.h"
 #include "AIController.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Class.h"
+#include "BehaviorTree/Blackboard/BlackboardKeyType_Float.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "GameFramework/Pawn.h"
 
@@ -19,6 +20,10 @@ UBTTask_SelectBossAttack::UBTTask_SelectBossAttack()
 	SelectedAttackClassKey.AddClassFilter(
 		this, GET_MEMBER_NAME_CHECKED(UBTTask_SelectBossAttack, SelectedAttackClassKey), UGameplayAbility::StaticClass());
 	SelectedAttackClassKey.SelectedKeyName = TEXT("SelectedBossAttackClass");
+
+	PreferredRangeKey.AddFloatFilter(
+		this, GET_MEMBER_NAME_CHECKED(UBTTask_SelectBossAttack, PreferredRangeKey));
+	PreferredRangeKey.SelectedKeyName = TEXT("SelectedAttackPreferredRange");
 }
 
 EBTNodeResult::Type UBTTask_SelectBossAttack::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
@@ -57,12 +62,24 @@ EBTNodeResult::Type UBTTask_SelectBossAttack::ExecuteTask(UBehaviorTreeComponent
 
 	if (UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent())
 	{
-		if (SelectedAttackClassKey.IsSet())
+		// Write by name, not by the selector's cached KeyID: a BT node serialized before the
+		// blackboard key was added can still show the name in the details panel while its cached
+		// ID is invalid, which makes IsSet() false and silently skips the write.
+		if (!SelectedAttackClassKey.SelectedKeyName.IsNone())
 		{
-			Blackboard->SetValue<UBlackboardKeyType_Class>(
-				SelectedAttackClassKey.GetSelectedKeyID(), SelectedAttack.AbilityClass.Get());
+			Blackboard->SetValueAsClass(
+				SelectedAttackClassKey.SelectedKeyName, SelectedAttack.AbilityClass.Get());
+		}
+
+		if (!PreferredRangeKey.SelectedKeyName.IsNone())
+		{
+			Blackboard->SetValueAsFloat(
+				PreferredRangeKey.SelectedKeyName, SelectedAttack.PreferredRange);
 		}
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("BTTask_SelectBossAttack: %s -> %s (PreferredRange %.1f)"),
+		*GetNameSafe(Pawn), *GetNameSafe(SelectedAttack.AbilityClass.Get()), SelectedAttack.PreferredRange);
 
 	return EBTNodeResult::Succeeded;
 }

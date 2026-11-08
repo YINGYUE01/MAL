@@ -229,13 +229,13 @@ bool UMALBossAttackSelectorComponent::SelectAttack(AActor* Target, FMALBossAttac
 		{
 			continue;
 		}
-
+		
 		const float PhaseWeight = Entry.GetPhaseWeight(CurrentPhase);
 		if (PhaseWeight <= 0.0f)
 		{
 			continue;
 		}
-
+		
 		if (Distance < Entry.MinRange || Distance > Entry.MaxRange)
 		{
 			continue;
