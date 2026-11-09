@@ -8,7 +8,7 @@
 #include "GameAbilities/MALAbility_SpellCast.h"
 #include "GameFramework/Pawn.h"
 
-static UMALAbility_SpellCast* GetAnimatingSpell(USkeletalMeshComponent* MeshComp)
+static UMALAbility_SpellCast* GetAnimatingSpellForLanding(USkeletalMeshComponent* MeshComp)
 {
 	if (!MeshComp || !MeshComp->GetWorld() || !MeshComp->GetWorld()->IsGameWorld())
 	{
@@ -46,7 +46,7 @@ void UMALAnimNotifyState_SpellLanding::NotifyBegin(
 {
 	Super::NotifyBegin(MeshComp, Animation, TotalDuration, EventReference);
 
-	if (UMALAbility_SpellCast* Spell = GetAnimatingSpell(MeshComp))
+	if (UMALAbility_SpellCast* Spell = GetAnimatingSpellForLanding(MeshComp))
 	{
 		Spell->NotifyBeginLanding(TotalDuration);
 	}
@@ -59,7 +59,7 @@ void UMALAnimNotifyState_SpellLanding::NotifyEnd(
 {
 	Super::NotifyEnd(MeshComp, Animation, EventReference);
 
-	if (UMALAbility_SpellCast* Spell = GetAnimatingSpell(MeshComp))
+	if (UMALAbility_SpellCast* Spell = GetAnimatingSpellForLanding(MeshComp))
 	{
 		Spell->NotifyFinishLanding();
 	}
