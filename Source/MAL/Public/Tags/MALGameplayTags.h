@@ -74,6 +74,26 @@ public:
 	FGameplayTag Event_WeaponHit;
 
 	// -----------------------------------------------------------------------------
+	// Enemy Type Tags - What kind of enemy an AI pawn is
+	// -----------------------------------------------------------------------------
+
+	/** Root of enemy kind tags. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Enemy")
+	FGameplayTag Enemy_Type;
+
+	/** Boss-grade enemy; the only kind with a top-screen bar today. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Enemy")
+	FGameplayTag Enemy_Type_Boss;
+
+	/** Elite enemy; reserved for a future elite bar. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Enemy")
+	FGameplayTag Enemy_Type_Elite;
+
+	/** Ordinary enemy; no top-screen bar. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Enemy")
+	FGameplayTag Enemy_Type_Normal;
+
+	// -----------------------------------------------------------------------------
 	// Weapon Tags - What kind of weapon is equipped
 	// -----------------------------------------------------------------------------
 

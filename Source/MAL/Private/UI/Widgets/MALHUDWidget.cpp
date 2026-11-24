@@ -6,7 +6,11 @@
 #include "AbilitySystemGlobals.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
+#include "Character/MALEnemyCharacter.h"
 #include "Combat/MALLockOnComponent.h"
+#include "Components/VerticalBox.h"
+#include "Components/VerticalBoxSlot.h"
+#include "UI/Widgets/MALBossBarItemWidget.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
@@ -42,6 +46,14 @@ void UMALHUDWidget::InitializeForPlayer(APlayerController* InPlayerController)
 		{
 			LockOnComponent->OnLockChanged.AddDynamic(this, &UMALHUDWidget::HandleLockChanged);
 		}
+
+		// Bind before the first Refresh so a sync that lands during construction is not missed.
+		MALPlayerController->OnBossBarsChanged.RemoveAll(this);
+		MALPlayerController->OnBossBarRemoved.RemoveAll(this);
+		MALPlayerController->OnBossBarsReset.RemoveAll(this);
+		MALPlayerController->OnBossBarsChanged.AddUObject(this, &UMALHUDWidget::HandleBossBarsChanged);
+		MALPlayerController->OnBossBarRemoved.AddUObject(this, &UMALHUDWidget::HandleBossBarRemoved);
+		MALPlayerController->OnBossBarsReset.AddUObject(this, &UMALHUDWidget::HandleBossBarsReset);
 	}
 
 	if (!StatViewModel)
@@ -101,6 +113,9 @@ void UMALHUDWidget::InitializeForPlayer(APlayerController* InPlayerController)
 	PublishProgressionToNestedWidgets();
 
 	TryBindAbilitySystem();
+
+	// The controller may already hold a synced list (late join): draw it immediately.
+	RefreshBossBars();
 }
 
 void UMALHUDWidget::PublishProgressionToNestedWidgets()
@@ -198,6 +213,189 @@ void UMALHUDWidget::TryBindAbilitySystem()
 	BindRetryPoll.OnMiss(GetWorld(),
 		FTimerDelegate::CreateUObject(this, &UMALHUDWidget::TryBindAbilitySystem),
 		AbilitySystemBindRetryInterval, AbilitySystemBindFastRetryCount, AbilitySystemBindSlowRetryInterval);
+}
+
+void UMALHUDWidget::HandleBossBarsChanged()
+{
+	RefreshBossBars();
+}
+
+void UMALHUDWidget::HandleBossBarRemoved(AActor* Boss, bool bFadeOut)
+{
+	RemoveBossBarItem(Boss, bFadeOut);
+}
+
+void UMALHUDWidget::HandleBossBarsReset()
+{
+	ClearBossBarItems();
+	RefreshBossBars();
+}
+
+void UMALHUDWidget::RefreshBossBars()
+{
+	AMALPlayerController* MALPlayerController = Cast<AMALPlayerController>(OwningPlayerController.Get());
+	if (!MALPlayerController)
+	{
+		return;
+	}
+
+	if (!BossBarList || !BossBarItemClass)
+	{
+		if (!bWarnedMissingBossBarSetup)
+		{
+			bWarnedMissingBossBarSetup = true;
+			UE_LOG(LogTemp, Warning,
+				TEXT("UMALHUDWidget: BossBarList/BossBarItemClass not set on %s; boss bars are disabled."),
+				*GetNameSafe(this));
+		}
+
+		return;
+	}
+
+	const TArray<TWeakObjectPtr<AActor>>& ActiveBosses = MALPlayerController->GetActiveBossBars();
+
+	TArray<AActor*> DesiredBosses;
+	DesiredBosses.Reserve(ActiveBosses.Num());
+	for (const TWeakObjectPtr<AActor>& WeakBoss : ActiveBosses)
+	{
+		if (AActor* Boss = WeakBoss.Get())
+		{
+			DesiredBosses.Add(Boss);
+		}
+	}
+
+	// The server keeps the full list; the HUD only shows the most recent rows.
+	if (DesiredBosses.Num() > MaxBossBars)
+	{
+		DesiredBosses.RemoveAt(0, DesiredBosses.Num() - MaxBossBars);
+	}
+
+	TSet<AActor*> DesiredSet;
+	for (AActor* Boss : DesiredBosses)
+	{
+		DesiredSet.Add(Boss);
+	}
+
+	// Drop rows that fell outside the cap. A fading row is left alone so the death fade is not
+	// cut short by the next refresh.
+	TArray<TWeakObjectPtr<AActor>> KeysToRemove;
+	for (const TPair<TWeakObjectPtr<AActor>, TObjectPtr<UMALBossBarItemWidget>>& Pair : BossBarItems)
+	{
+		AActor* Boss = Pair.Key.Get();
+		UMALBossBarItemWidget* Item = Pair.Value.Get();
+		if (!Item || !Boss)
+		{
+			if (Item)
+			{
+				Item->RemoveFromParent();
+			}
+			KeysToRemove.Add(Pair.Key);
+			continue;
+		}
+
+		if (DesiredSet.Contains(Boss) || Item->IsFading())
+		{
+			continue;
+		}
+
+		const AMALEnemyCharacter* Enemy = Cast<AMALEnemyCharacter>(Boss);
+		if (Enemy && Enemy->IsDead())
+		{
+			TWeakObjectPtr<AActor> Key = Pair.Key;
+			Item->FadeOutAndRemove(BossBarDeathFadeDuration, [this, Key]()
+			{
+				BossBarItems.Remove(Key);
+			});
+		}
+		else
+		{
+			Item->RemoveFromParent();
+			KeysToRemove.Add(Pair.Key);
+		}
+	}
+
+	for (const TWeakObjectPtr<AActor>& Key : KeysToRemove)
+	{
+		BossBarItems.Remove(Key);
+	}
+
+	// Add rows in server order. The widget is parented before InitializeForBoss because View
+	// Binding only materializes once the widget is in the tree.
+	for (AActor* Boss : DesiredBosses)
+	{
+		const TWeakObjectPtr<AActor> Key(Boss);
+		TObjectPtr<UMALBossBarItemWidget>* Existing = BossBarItems.Find(Key);
+		if (Existing && Existing->Get())
+		{
+			if (Existing->Get()->IsFading())
+			{
+				Existing->Get()->CancelFade();
+			}
+			continue;
+		}
+
+		UMALBossBarItemWidget* Item = CreateWidget<UMALBossBarItemWidget>(MALPlayerController, BossBarItemClass);
+		if (!Item)
+		{
+			continue;
+		}
+
+		UVerticalBoxSlot* BarSlot = BossBarList->AddChildToVerticalBox(Item);
+		if (BarSlot)
+		{
+			BarSlot->SetPadding(FMargin(0.0f, 4.0f));
+			BarSlot->SetHorizontalAlignment(HAlign_Fill);
+		}
+
+		Item->InitializeForBoss(Boss);
+		BossBarItems.Add(Key, Item);
+	}
+}
+
+void UMALHUDWidget::RemoveBossBarItem(AActor* Boss, bool bFadeOut)
+{
+	if (!Boss)
+	{
+		return;
+	}
+
+	const TWeakObjectPtr<AActor> Key(Boss);
+	TObjectPtr<UMALBossBarItemWidget>* Found = BossBarItems.Find(Key);
+	if (!Found || !Found->Get())
+	{
+		BossBarItems.Remove(Key);
+		return;
+	}
+
+	UMALBossBarItemWidget* Item = Found->Get();
+	if (bFadeOut)
+	{
+		if (!Item->IsFading())
+		{
+			Item->FadeOutAndRemove(BossBarDeathFadeDuration, [this, Key]()
+			{
+				BossBarItems.Remove(Key);
+			});
+		}
+	}
+	else
+	{
+		Item->RemoveFromParent();
+		BossBarItems.Remove(Key);
+	}
+}
+
+void UMALHUDWidget::ClearBossBarItems()
+{
+	for (const TPair<TWeakObjectPtr<AActor>, TObjectPtr<UMALBossBarItemWidget>>& Pair : BossBarItems)
+	{
+		if (UMALBossBarItemWidget* Item = Pair.Value.Get())
+		{
+			Item->RemoveFromParent();
+		}
+	}
+
+	BossBarItems.Reset();
 }
 
 void UMALHUDWidget::HandleLockChanged(AActor* LockedTarget)
@@ -298,13 +496,19 @@ void UMALHUDWidget::NativeDestruct()
 	}
 	LockMarkerPollTimer.Invalidate();
 
-	if (const AMALPlayerController* MALPlayerController = Cast<AMALPlayerController>(OwningPlayerController.Get()))
+	if (AMALPlayerController* MALPlayerController = Cast<AMALPlayerController>(OwningPlayerController.Get()))
 	{
+		MALPlayerController->OnBossBarsChanged.RemoveAll(this);
+		MALPlayerController->OnBossBarRemoved.RemoveAll(this);
+		MALPlayerController->OnBossBarsReset.RemoveAll(this);
+
 		if (UMALLockOnComponent* LockOnComponent = MALPlayerController->GetLockOnComponent())
 		{
 			LockOnComponent->OnLockChanged.RemoveDynamic(this, &UMALHUDWidget::HandleLockChanged);
 		}
 	}
+
+	ClearBossBarItems();
 
 	// Unbind before the widget goes away so the view model cannot push into half-destroyed
 	// widget bindings.

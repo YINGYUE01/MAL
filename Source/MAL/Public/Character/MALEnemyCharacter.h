@@ -48,6 +48,19 @@ public:
 	TObjectPtr<UMALBossAttackSelectorComponent> BossAttackSelector;
 
 	/**
+	 * What kind of enemy this is; authored on the blueprint.
+	 *
+	 * The tag is a class default, so every machine reads the same value without replication.
+	 * Empty means ordinary: only Boss-tagged enemies get a top-screen bar today.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|AI|Type")
+	FGameplayTag EnemyTypeTag;
+
+	/** Name shown on the top-screen Boss bar; falls back to "Boss" when unset. */
+	UFUNCTION(BlueprintPure, Category = "MAL|Boss")
+	FText GetBossDisplayName() const;
+
+	/**
 	 * Abilities every instance of this enemy starts with.
 	 *
 	 * An enemy has no weapon-driven kit and no class definition, so this list is its whole
@@ -77,6 +90,8 @@ public:
 	bool TryActivateAbilityByClass(TSubclassOf<UGameplayAbility> AbilityClass);
 
 protected:
+	virtual void BeginPlay() override;
+
 	/** Server only: base clears the legacy layer and rebuilds the weapon, then grants InitialAbilities. */
 	virtual void GrantAbilities() override;
 };

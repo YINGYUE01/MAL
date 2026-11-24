@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Player/MALPlayerController.h"
+#include "Combat/MALCombatEventsSubsystem.h"
 #include "Combat/MALHitFeedbackComponent.h"
 #include "Combat/MALLockOnComponent.h"
 #include "Character/MALCharacterBase.h"
@@ -62,6 +63,56 @@ void AMALPlayerController::ClientShowDamageNumber_Implementation(float Amount, b
 	}
 }
 
+void AMALPlayerController::ClientAddBossBar_Implementation(AActor* Boss)
+{
+	if (!Boss)
+	{
+		return;
+	}
+
+	for (const TWeakObjectPtr<AActor>& Existing : ActiveBossBars)
+	{
+		if (Existing.Get() == Boss)
+		{
+			return;
+		}
+	}
+
+	ActiveBossBars.Add(Boss);
+	OnBossBarsChanged.Broadcast();
+}
+
+void AMALPlayerController::ClientRemoveBossBar_Implementation(AActor* Boss, bool bFadeOut)
+{
+	if (!Boss)
+	{
+		return;
+	}
+
+	ActiveBossBars.RemoveAll([Boss](const TWeakObjectPtr<AActor>& Entry)
+	{
+		return Entry.Get() == Boss;
+	});
+
+	OnBossBarRemoved.Broadcast(Boss, bFadeOut);
+	OnBossBarsChanged.Broadcast();
+}
+
+void AMALPlayerController::ClientSyncBossBars_Implementation(const TArray<AActor*>& Bosses)
+{
+	ActiveBossBars.Reset();
+	for (AActor* Boss : Bosses)
+	{
+		if (Boss)
+		{
+			ActiveBossBars.Add(Boss);
+		}
+	}
+
+	OnBossBarsReset.Broadcast();
+	OnBossBarsChanged.Broadcast();
+}
+
 void AMALPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
@@ -92,6 +143,17 @@ void AMALPlayerController::BeginPlay()
 		if (UMALDamageNumberSubsystem* DamageNumberSubsystem = ULocalPlayer::GetSubsystem<UMALDamageNumberSubsystem>(GetLocalPlayer()))
 		{
 			DamageNumberSubsystem->SetDamageNumberWidgetClass(DamageNumberWidgetClass);
+		}
+	}
+
+	// The server owns the active Boss list. Seed this controller once so a late joiner (or a
+	// host that already had a Boss in combat) starts with the current bars instead of waiting
+	// for the next engagement.
+	if (HasAuthority())
+	{
+		if (UMALCombatEventsSubsystem* CombatEvents = GetWorld() ? GetWorld()->GetSubsystem<UMALCombatEventsSubsystem>() : nullptr)
+		{
+			CombatEvents->SyncToController(this);
 		}
 	}
 }

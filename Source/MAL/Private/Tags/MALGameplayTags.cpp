@@ -36,6 +36,12 @@ void UMALGameplayTags::InitializeNativeTags()
 	Event_Death = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.Death")), TEXT("Entity died"));
 	Event_WeaponHit = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Event.WeaponHit")), TEXT("Weapon collision detected a hit"));
 
+	// Enemy Type Tags
+	Enemy_Type = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Enemy.Type")), TEXT("Root of enemy kind tags"));
+	Enemy_Type_Boss = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Enemy.Type.Boss")), TEXT("Boss-grade enemy"));
+	Enemy_Type_Elite = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Enemy.Type.Elite")), TEXT("Elite enemy"));
+	Enemy_Type_Normal = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Enemy.Type.Normal")), TEXT("Ordinary enemy"));
+
 	// Weapon Tags
 	Weapon_Sword = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Sword")), TEXT("One-handed blade family"));
 	Weapon_Axe = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Weapon.Axe")), TEXT("Axe family"));

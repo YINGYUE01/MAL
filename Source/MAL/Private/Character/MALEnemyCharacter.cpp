@@ -9,8 +9,11 @@
 #include "AI/MALEnemyAIController.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
+#include "Combat/MALCombatEventsSubsystem.h"
 #include "Data/MALBossAttackSet.h"
+#include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Tags/MALGameplayTags.h"
 #include "UI/Widgets/MALWorldWidgetComponent.h"
 
 AMALEnemyCharacter::AMALEnemyCharacter()
@@ -67,6 +70,38 @@ AMALEnemyCharacter::AMALEnemyCharacter()
 	// fall back to the low adaptive rate while the enemy is idle.
 	SetNetUpdateFrequency(100.0f);
 	SetMinNetUpdateFrequency(30.0f);
+}
+
+void AMALEnemyCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// Bosses use the top-screen bar instead; the overhead nameplate would duplicate it.
+	const bool bIsBoss = EnemyTypeTag.MatchesTag(UMALGameplayTags::Get()->Enemy_Type_Boss);
+	if (!bIsBoss)
+	{
+		return;
+	}
+
+	if (HealthBarWidget)
+	{
+		HealthBarWidget->SetVisibility(false, true);
+	}
+
+	// The bar is radius-driven, so every live Boss must be registered even before it is hit.
+	if (HasAuthority())
+	{
+		if (UMALCombatEventsSubsystem* CombatEvents = GetWorld() ? GetWorld()->GetSubsystem<UMALCombatEventsSubsystem>() : nullptr)
+		{
+			CombatEvents->RegisterBoss(this);
+		}
+	}
+}
+
+FText AMALEnemyCharacter::GetBossDisplayName() const
+{
+	const FText Name = BossAttackSet ? BossAttackSet->BossDisplayName : FText::GetEmpty();
+	return Name.IsEmpty() ? FText::FromString(TEXT("Boss")) : Name;
 }
 
 void AMALEnemyCharacter::GrantAbilities()

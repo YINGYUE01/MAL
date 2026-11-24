@@ -23,6 +23,9 @@ class UMALLockOnComponent;
 class UMALWeaponComponent;
 class UMALWeaponDefinition;
 
+/** One Boss was removed from the local presentation list; bFadeOut marks a health-zero death. */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FMALBossBarRemovedSignature, AActor*, bool);
+
 UCLASS()
 class MAL_API AMALPlayerController : public APlayerController
 {
@@ -50,6 +53,34 @@ public:
 	 */
 	UFUNCTION(Client, Unreliable)
 	void ClientShowDamageNumber(float Amount, bool bCritical, bool bMagic, bool bKillingBlow, FVector WorldLocation);
+
+	/**
+	 * Server -> owning client: add one active Boss to the local bar list.
+	 * Reliable because the list is not chatty; a dropped add would leave the HUD missing a Boss
+	 * until the next full sync.
+	 */
+	UFUNCTION(Client, Reliable)
+	void ClientAddBossBar(AActor* Boss);
+
+	/** Server -> owning client: remove one Boss; bFadeOut is true for a health-zero death. */
+	UFUNCTION(Client, Reliable)
+	void ClientRemoveBossBar(AActor* Boss, bool bFadeOut);
+
+	/** Server -> owning client: replace the whole list (late join / actor destruction). */
+	UFUNCTION(Client, Reliable)
+	void ClientSyncBossBars(const TArray<AActor*>& Bosses);
+
+	/** Current Boss bars, in the order the server added them. Presentation only; not replicated. */
+	const TArray<TWeakObjectPtr<AActor>>& GetActiveBossBars() const { return ActiveBossBars; }
+
+	/** List changed by add/remove/sync; the HUD adds/updates from GetActiveBossBars(). */
+	FSimpleMulticastDelegate OnBossBarsChanged;
+
+	/** One Boss was removed; the HUD fades or removes that item. */
+	FMALBossBarRemovedSignature OnBossBarRemoved;
+
+	/** The whole list was replaced; the HUD clears and rebuilds. */
+	FSimpleMulticastDelegate OnBossBarsReset;
 
 	/** Open the pause menu, or close it when one is already open. */
 	UFUNCTION(BlueprintCallable, Category = "MAL|UI")
@@ -245,6 +276,9 @@ private:
 
 	/** Re-resolve the ability bar from the specs the character holds right now. */
 	void RefreshAbilityBar();
+
+	/** Local presentation list, fed only by the Client RPCs above. */
+	TArray<TWeakObjectPtr<AActor>> ActiveBossBars;
 
 	/** Weapon component callback: a swap landed, so the bar's contents may have changed. */
 	void HandleEquippedWeaponChanged();

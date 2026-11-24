@@ -109,6 +109,19 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss")
 	TArray<FMALBossAttackEntry> Attacks;
 
+	/** Name shown on the top-screen Boss bar; falls back to "Boss" when unset. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss|Bar")
+	FText BossDisplayName;
+
+	/**
+	 * Radius around a player inside which this Boss shows a top-screen bar, in centimetres.
+	 *
+	 * Visibility is computed per player on the server (each controller only sees Bosses its own
+	 * pawn is near) and pushed through Client RPCs; clients never infer it from replicated state.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss|Bar", meta = (ClampMin = "0.0"))
+	float BossBarActivationRadius = 1500.0f;
+
 	/** Health fraction below which phase 2 begins. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss|Phase", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float Phase2Threshold = 0.66f;

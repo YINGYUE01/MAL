@@ -5,14 +5,19 @@
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
 #include "GameplayTagContainer.h"
+#include "Templates/SubclassOf.h"
 #include "UI/Framework/MALRetryPoll.h"
+#include "UI/Widgets/MALBossBarItemWidget.h"
 #include "UI/Widgets/MALUserWidget.h"
 #include "MALHUDWidget.generated.h"
 
+class AActor;
 class UAbilitySystemComponent;
 class UMALAbilityBarViewModel;
+class UMALBossBarItemWidget;
 class UMALProgressionViewModel;
 class UMALStatViewModel;
+class UVerticalBox;
 class APlayerController;
 
 /**
@@ -101,6 +106,22 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|UI")
 	TObjectPtr<UMALProgressionViewModel> ProgressionViewModel;
 
+	/** Vertical box inside WBP_MainHUD that holds one item per active Boss. */
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|UI|Boss", meta = (BindWidgetOptional))
+	TObjectPtr<UVerticalBox> BossBarList;
+
+	/** Widget class spawned for each Boss; set on WBP_MainHUD. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Boss")
+	TSubclassOf<UMALBossBarItemWidget> BossBarItemClass;
+
+	/** Maximum number of Boss rows kept on screen; the oldest active row is dropped first. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Boss", meta = (ClampMin = "1"))
+	int32 MaxBossBars = 3;
+
+	/** Seconds a dead Boss row stays visible while fading out. */
+	UPROPERTY(EditDefaultsOnly, Category = "MAL|UI|Boss", meta = (ClampMin = "0.0", ForceUnits = "s"))
+	float BossBarDeathFadeDuration = 1.5f;
+
 	virtual void NativeDestruct() override;
 
 	/**
@@ -140,6 +161,25 @@ private:
 	 * Called from TryBindAbilitySystem, which is also where a re-possession rebinds it.
 	 */
 	void PublishAbilitySystemToNestedWidgets(UAbilitySystemComponent* InAbilitySystemComponent);
+
+	/** Add or drop item widgets so the list matches the player controller's active Boss list. */
+	void RefreshBossBars();
+
+	void HandleBossBarsChanged();
+	void HandleBossBarRemoved(AActor* Boss, bool bFadeOut);
+	void HandleBossBarsReset();
+
+	/** Remove one row now, or fade it when the Boss died. */
+	void RemoveBossBarItem(AActor* Boss, bool bFadeOut);
+
+	/** Remove every row without fading (HUD teardown / full sync). */
+	void ClearBossBarItems();
+
+	/** Rows currently on screen, keyed by the Boss they follow. */
+	TMap<TWeakObjectPtr<AActor>, TObjectPtr<UMALBossBarItemWidget>> BossBarItems;
+
+	/** Warn only once when the HUD blueprint has no BossBarList/item class yet. */
+	bool bWarnedMissingBossBarSetup = false;
 
 	TWeakObjectPtr<APlayerController> OwningPlayerController;
 
