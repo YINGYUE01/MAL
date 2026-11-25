@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Data/MALBossAttackSet.h"
+#include "Data/MALBossSkillKit.h"
 #include "MALBossAttackSelectorComponent.generated.h"
 
 class AActor;
@@ -29,10 +29,6 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-	/** Shared move set and phase thresholds. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss")
-	TObjectPtr<UMALBossAttackSet> AttackSet;
 
 	/** Seconds between the end of one attack and the start of the next, per phase. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss|Rhythm")
@@ -67,17 +63,28 @@ public:
 	int32 TopCandidateCount = 3;
 
 	/**
-	 * Pick an attack for Target. Pure: it does not start cooldowns or mark the attack used.
-	 * ActivateLastSelectedAttack does that on a successful activation.
+	 * Debug: draw one fixed top-left row per kit entry (name + current score).
+	 *
+	 * Rows use stable debug-message keys, so a row keeps its position and only its number
+	 * changes. Scores are shown without the per-pick jitter, otherwise the display would
+	 * flicker every tick.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss|Debug")
+	bool bDrawSkillScores = true;
+
+	/**
+	 * Pick an attack for Target. Pure: it does not start the ability nor mark it used.
+	 * ActivateLastSelectedAttack does that on a successful activation; cooldowns belong to GAS
+	 * (each ability's CooldownGameplayEffectClass), never to this component.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MAL|Boss|Selection")
-	bool SelectAttack(AActor* Target, FMALBossAttackEntry& OutAttack, FString& OutDebug);
+	bool SelectAttack(AActor* Target, FMALBossSkillEntry& OutAttack, FString& OutDebug);
 
 	/** Activate the entry produced by the last successful SelectAttack. Server only. */
 	UFUNCTION(BlueprintCallable, Category = "MAL|Boss|Selection")
 	bool ActivateLastSelectedAttack();
 
-	/** Called when the selected ability has ended; starts cooldown and cadence. */
+	/** Called when the selected ability has ended; starts the cadence beat for the next pick. */
 	UFUNCTION(BlueprintCallable, Category = "MAL|Boss|Selection")
 	void NotifyAttackEnded();
 
@@ -104,21 +111,17 @@ public:
 	void NotifyPlayerEvaded();
 
 private:
-	/** World seconds at which each class becomes ready again. */
-	TMap<TSubclassOf<UGameplayAbility>, float> ReadyTimes;
-
 	/** Last few classes, newest at the end. */
 	TArray<TSubclassOf<UGameplayAbility>> RecentAttacks;
 
 	/** Start times of attacks inside the rolling budget window. */
 	TArray<float> AttackTimes;
 
-	FMALBossAttackEntry LastSelectedAttack;
+	FMALBossSkillEntry LastSelectedAttack;
 	bool bHasSelection = false;
 	bool bAttackInProgress = false;
 
 	TSubclassOf<UGameplayAbility> ActiveAttackClass;
-	float ActiveAttackCooldown = 0.0f;
 
 	float NextAttackAllowedTime = 0.0f;
 	float PhaseTransitionEndTime = 0.0f;
@@ -132,11 +135,49 @@ private:
 	FString LastSelectionDebug;
 
 	AMALCharacterBase* GetOwnerCharacter() const;
+
+	/**
+	 * The owner's skill kit, read straight from the character.
+	 *
+	 * Deliberately not a component property: granting (character) and scoring (this component)
+	 * must read the same list, and a second assignable copy is how the two used to drift.
+	 */
+	const UMALBossSkillKit* GetSkillKit() const;
+
 	float GetHealthPercent() const;
 	float GetPhaseInterval(int32 Phase) const;
 	int32 GetPhaseBudget(int32 Phase) const;
 	bool HasLineOfSight(AActor* Target) const;
 	int32 GetConsecutiveUses(const TSubclassOf<UGameplayAbility>& AbilityClass) const;
+
+	/**
+	 * True while the ability's own CooldownGameplayEffect is still running.
+	 *
+	 * Read straight from GAS (GetCooldownTimeRemaining) instead of tracking a duplicate timer:
+	 * a skill forced from Blueprint consumes the same cooldown the selector sees.
+	 */
+	bool IsSkillOnCooldown(const TSubclassOf<UGameplayAbility>& AbilityClass) const;
+
+	/** Anti-repeat multiplier for one entry: 0.2 if it was the last pick, 0.5 if within the last three. */
+	float GetRepeatPenalty(const FMALBossSkillEntry& Entry) const;
+
+	/**
+	 * Score one entry against the current target state, without the per-pick jitter.
+	 *
+	 * SelectAttack and DrawSkillScores both call this, so the numbers on screen are the numbers
+	 * the picker uses. Filters (range, LOS, cooldown, phase weight) are the caller's job.
+	 */
+	float ScoreEntry(
+		const FMALBossSkillEntry& Entry,
+		float Distance,
+		float FacingDot,
+		bool bTargetBehind,
+		float TargetHealthPercent,
+		bool bTargetCasting,
+		bool bTargetAttacking) const;
+
+	/** Screen-left score table, one fixed row per kit entry. */
+	void DrawSkillScores();
 	void UpdatePhaseState();
 	void StartPhaseTransition(int32 NewPhase);
 	void TrimRecentAttacks();

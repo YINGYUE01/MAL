@@ -10,7 +10,7 @@
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Combat/MALCombatEventsSubsystem.h"
-#include "Data/MALBossAttackSet.h"
+#include "Data/MALBossSkillKit.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Tags/MALGameplayTags.h"
@@ -36,7 +36,7 @@ AMALEnemyCharacter::AMALEnemyCharacter()
 	HealthBarWidget = CreateDefaultSubobject<UMALWorldWidgetComponent>(TEXT("HealthBarWidget"));
 	HealthBarWidget->SetupAttachment(GetCapsuleComponent());
 
-	// Inert until a Boss Blueprint assigns BossAttackSet; keeping it on the shared class avoids a
+	// Inert until a Boss Blueprint assigns BossSkillKit; keeping it on the shared class avoids a
 	// second Boss character class just to host one component.
 	BossAttackSelector = CreateDefaultSubobject<UMALBossAttackSelectorComponent>(TEXT("BossAttackSelector"));
 	HealthBarWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 110.0f));
@@ -100,8 +100,7 @@ void AMALEnemyCharacter::BeginPlay()
 
 FText AMALEnemyCharacter::GetBossDisplayName() const
 {
-	const FText Name = BossAttackSet ? BossAttackSet->BossDisplayName : FText::GetEmpty();
-	return Name.IsEmpty() ? FText::FromString(TEXT("Boss")) : Name;
+	return BossDisplayName.IsEmpty() ? FText::FromString(TEXT("Boss")) : BossDisplayName;
 }
 
 void AMALEnemyCharacter::GrantAbilities()
@@ -113,6 +112,17 @@ void AMALEnemyCharacter::GrantAbilities()
 	for (const TSubclassOf<UGameplayAbility>& AbilityClass : InitialAbilities)
 	{
 		GrantAbilityIfMissing(AbilityClass);
+	}
+
+	// Boss kit: every entry is granted here, including the grant-only ones, so the selector's
+	// candidates are always backed by a granted spec. This is the single grant source for a
+	// Boss - InitialAbilities stays for regular enemies that have no kit assigned.
+	if (BossSkillKit)
+	{
+		for (const FMALBossSkillEntry& Entry : BossSkillKit->Skills)
+		{
+			GrantAbilityIfMissing(Entry.AbilityClass);
+		}
 	}
 }
 
@@ -138,7 +148,7 @@ bool AMALEnemyCharacter::TryActivateAbilityByTag(FGameplayTag AbilityTag)
 	// actually runs. Intercepting here means the Blueprint tree needs no new node: its fixed
 	// Enemy.Attack2 call becomes "ask the Boss selector", while regular enemies keep the old
 	// tag activation path.
-	if (BossAttackSet && BossAttackSelector)
+	if (BossSkillKit && BossAttackSelector)
 	{
 		AActor* Target = nullptr;
 		if (const AAIController* AI = Cast<AAIController>(GetController()))
@@ -153,7 +163,7 @@ bool AMALEnemyCharacter::TryActivateAbilityByTag(FGameplayTag AbilityTag)
 			}
 		}
 
-		FMALBossAttackEntry SelectedAttack;
+		FMALBossSkillEntry SelectedAttack;
 		FString Debug;
 		if (!BossAttackSelector->SelectAttack(Target, SelectedAttack, Debug))
 		{

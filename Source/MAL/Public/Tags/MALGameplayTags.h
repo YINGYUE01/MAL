@@ -175,18 +175,107 @@ public:
 	/** Parent of abilities shared by both sides (hit reaction, future universal actions). */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Common")
 	FGameplayTag Ability_Common;
+	
 
-	/** Player melee attack (weapon-driven). */
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player")
-	FGameplayTag Ability_Player_Attack;
+	// --- Per-weapon attack abilities (new) ---
+	//
+	// Four combo steps per weapon family, e.g. MAL.Ability.Player.Sword.Attack1. The family sits
+	// in the middle of the tag, so MAL.Ability.Player.Sword answers for every step of a sword
+	// swing the same way MAL.Weapon.Sword answers for a rapier.
+	//
+	// Every step named here has a matching cooldown tag in the Cooldown block below; the step's
+	// cooldown effect has to grant that tag, or GetCooldownTimeRemaining reports zero forever.
 
-	/** Player dodge/dash. */
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player")
-	FGameplayTag Ability_Player_Dodge;
+	// Sword combo steps.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Sword_Attack1;
 
-	/** Player self-buff. */
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player")
-	FGameplayTag Ability_Player_Buff;
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Sword_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Sword_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Sword_Attack4;
+
+	// Axe combo steps.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Axe_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Axe_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Axe_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Axe_Attack4;
+
+	// Dagger combo steps.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Dagger_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Dagger_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Dagger_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Dagger_Attack4;
+
+	// Hammer combo steps.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Hammer_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Hammer_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Hammer_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Hammer_Attack4;
+
+	// Scythe combo steps.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Scythe_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Scythe_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Scythe_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Scythe_Attack4;
+
+	// Spear combo steps.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Spear_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Spear_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Spear_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Spear_Attack4;
+
+	// Bow combo steps.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Bow_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Bow_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Bow_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Player|Weapon")
+	FGameplayTag Ability_Player_Bow_Attack4;
 
 	/** Enemy melee attack (activated by the AI). */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Ability|Enemy")
@@ -215,14 +304,7 @@ public:
 	 * reads the ability's cooldown tags back off the owner, so a cooldown effect that grants no
 	 * tags reports zero remaining time and the HUD would never see the sweep.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown")
-	FGameplayTag Cooldown_Attack;
 
-	/** Self-buff is on cooldown; same contract as Cooldown_Attack. */
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown")
-	FGameplayTag Cooldown_Buff;
-
-	// --- Ownership hierarchy (new) ---
 
 	/** Parent of player cooldown tags. */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
@@ -232,17 +314,103 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Enemy")
 	FGameplayTag Cooldown_Enemy;
 
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
-	FGameplayTag Cooldown_Player_Attack;
 
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
-	FGameplayTag Cooldown_Player_Buff;
+	// --- Per-weapon attack cooldowns (new) ---
+	//
+	// Mirror of the per-weapon ability tags above: MAL.Cooldown.Player.Sword.Attack1 is the tag
+	// the sword's first step's cooldown effect grants. Keep the two lists in step -- a step whose
+	// cooldown effect grants no tag reports zero remaining time, and its HUD sweep never shows.
 
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
-	FGameplayTag Cooldown_Player_Combo2;
+	// Sword combo step cooldowns.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Sword_Attack1;
 
-	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player")
-	FGameplayTag Cooldown_Player_Whirlwind;
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Sword_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Sword_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Sword_Attack4;
+
+	// Axe combo step cooldowns.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Axe_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Axe_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Axe_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Axe_Attack4;
+
+	// Dagger combo step cooldowns.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Dagger_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Dagger_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Dagger_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Dagger_Attack4;
+
+	// Hammer combo step cooldowns.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Hammer_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Hammer_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Hammer_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Hammer_Attack4;
+
+	// Scythe combo step cooldowns.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Scythe_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Scythe_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Scythe_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Scythe_Attack4;
+
+	// Spear combo step cooldowns.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Spear_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Spear_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Spear_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Spear_Attack4;
+
+	// Bow combo step cooldowns.
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Bow_Attack1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Bow_Attack2;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Bow_Attack3;
+
+	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Player|Weapon")
+	FGameplayTag Cooldown_Player_Bow_Attack4;
 
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Cooldown|Enemy")
 	FGameplayTag Cooldown_Enemy_Attack;
@@ -289,7 +457,7 @@ public:
 
 	/** Buff input */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")
-	FGameplayTag Input_Attack_Buff;
+	FGameplayTag Input_Attack_Q;
 
 	/** Opens or closes the attribute menu; not an ability input. */
 	UPROPERTY(BlueprintReadOnly, Category = "MAL|Tags|Input")

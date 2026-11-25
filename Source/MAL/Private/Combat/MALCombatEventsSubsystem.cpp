@@ -3,7 +3,6 @@
 #include "Combat/MALCombatEventsSubsystem.h"
 
 #include "Character/MALEnemyCharacter.h"
-#include "Data/MALBossAttackSet.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
@@ -405,13 +404,9 @@ void UMALCombatEventsSubsystem::UnregisterBoss(AActor* Boss, bool bFadeOut)
 
 float UMALCombatEventsSubsystem::GetBossBarRadius(const AActor* Boss) const
 {
-	// The bar radius lives on the Boss move set asset: per-Boss tuning without a component.
+	// The bar radius is a character default: it describes the actor, not its move set.
 	const AMALEnemyCharacter* Enemy = Cast<AMALEnemyCharacter>(Boss);
-	const UMALBossAttackSet* AttackSet = Enemy ? Enemy->BossAttackSet : nullptr;
-
-	return AttackSet
-		? FMath::Max(AttackSet->BossBarActivationRadius, 0.0f)
-		: 1500.0f;
+	return Enemy ? FMath::Max(Enemy->BossBarActivationRadius, 0.0f) : 1500.0f;
 }
 
 void UMALCombatEventsSubsystem::HandleBossDestroyed(AActor* DestroyedActor)

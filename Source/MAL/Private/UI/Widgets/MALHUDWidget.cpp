@@ -30,7 +30,7 @@ namespace
 	{
 		const UMALGameplayTags* Tags = UMALGameplayTags::Get();
 		OutTags.Add(Tags->Input_Attack_LMB);
-		OutTags.Add(Tags->Input_Attack_Buff);
+		OutTags.Add(Tags->Input_Attack_Q);
 	}
 }
 

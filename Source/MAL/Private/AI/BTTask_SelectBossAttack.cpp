@@ -52,7 +52,7 @@ EBTNodeResult::Type UBTTask_SelectBossAttack::ExecuteTask(UBehaviorTreeComponent
 		Target = AIController->GetFocusActor();
 	}
 
-	FMALBossAttackEntry SelectedAttack;
+	FMALBossSkillEntry SelectedAttack;
 	FString Debug;
 	if (!Selector->SelectAttack(Target, SelectedAttack, Debug))
 	{

@@ -6,17 +6,20 @@
 #include "AbilitySystemGlobals.h"
 #include "AbilitySystem/Attributes/MALAttributeSet.h"
 #include "AIController.h"
+#include "BehaviorTree/BlackboardComponent.h"
 #include "Character/MALCharacterBase.h"
 #include "Character/MALEnemyCharacter.h"
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
+#include "GameplayAbilitySpec.h"
 #include "Tags/MALGameplayTags.h"
 
 namespace
 {
 	struct FScoredBossAttack
 	{
-		FMALBossAttackEntry Entry;
+		FMALBossSkillEntry Entry;
 		float Score = 0.0f;
 	};
 }
@@ -34,17 +37,7 @@ void UMALBossAttackSelectorComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// The shared enemy class hosts the component; only Bosses assign BossAttackSet. Fall back to
-	// the character's data asset so a Boss is configured entirely from Blueprint defaults.
-	if (!AttackSet)
-	{
-		if (const AMALEnemyCharacter* Enemy = Cast<AMALEnemyCharacter>(GetOwner()))
-		{
-			AttackSet = Enemy->BossAttackSet;
-		}
-	}
-
-	if (const UMALBossAttackSet* Set = AttackSet)
+	if (const UMALBossSkillKit* Set = GetSkillKit())
 	{
 		CurrentPhase = Set->GetPhaseForHealthPercent(GetHealthPercent());
 	}
@@ -53,6 +46,12 @@ void UMALBossAttackSelectorComponent::BeginPlay()
 	{
 		NextAttackAllowedTime = World->GetTimeSeconds() + 0.5f;
 	}
+}
+
+const UMALBossSkillKit* UMALBossAttackSelectorComponent::GetSkillKit() const
+{
+	const AMALEnemyCharacter* Enemy = Cast<AMALEnemyCharacter>(GetOwner());
+	return Enemy ? Enemy->BossSkillKit : nullptr;
 }
 
 void UMALBossAttackSelectorComponent::TickComponent(
@@ -74,6 +73,13 @@ void UMALBossAttackSelectorComponent::TickComponent(
 	}
 
 	UpdatePhaseState();
+
+#if !UE_BUILD_SHIPPING
+	if (bDrawSkillScores)
+	{
+		DrawSkillScores();
+	}
+#endif
 }
 
 AMALCharacterBase* UMALBossAttackSelectorComponent::GetOwnerCharacter() const
@@ -141,7 +147,27 @@ int32 UMALBossAttackSelectorComponent::GetConsecutiveUses(const TSubclassOf<UGam
 	return Count;
 }
 
-bool UMALBossAttackSelectorComponent::SelectAttack(AActor* Target, FMALBossAttackEntry& OutAttack, FString& OutDebug)
+bool UMALBossAttackSelectorComponent::IsSkillOnCooldown(const TSubclassOf<UGameplayAbility>& AbilityClass) const
+{
+	if (!AbilityClass)
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner());
+	const FGameplayAbilityActorInfo* ActorInfo = ASC ? ASC->AbilityActorInfo.Get() : nullptr;
+	const FGameplayAbilitySpec* Spec = ASC ? ASC->FindAbilitySpecFromClass(AbilityClass) : nullptr;
+	if (!ActorInfo || !Spec || !Spec->Ability)
+	{
+		return false;
+	}
+
+	// The ability's own cooldown GE is the single source of truth; a skill forced from Blueprint
+	// consumes the same timer, so the selector can never disagree with GAS.
+	return Spec->Ability->GetCooldownTimeRemaining(ActorInfo) > KINDA_SMALL_NUMBER;
+}
+
+bool UMALBossAttackSelectorComponent::SelectAttack(AActor* Target, FMALBossSkillEntry& OutAttack, FString& OutDebug)
 {
 	OutDebug.Reset();
 
@@ -153,9 +179,10 @@ bool UMALBossAttackSelectorComponent::SelectAttack(AActor* Target, FMALBossAttac
 		return false;
 	}
 
-	if (!AttackSet || AttackSet->Attacks.Num() == 0)
+	const UMALBossSkillKit* Kit = GetSkillKit();
+	if (!Kit || Kit->Skills.Num() == 0)
 	{
-		OutDebug = TEXT("no AttackSet configured");
+		OutDebug = TEXT("no SkillKit configured");
 		WriteDebug(OutDebug);
 		return false;
 	}
@@ -220,12 +247,15 @@ bool UMALBossAttackSelectorComponent::SelectAttack(AActor* Target, FMALBossAttac
 	const float FacingDot = FVector::DotProduct(Owner->GetActorForwardVector(), Direction);
 	const bool bTargetBehind = FacingDot < -0.25f;
 
+	const bool bTargetCasting = TargetASC && TargetASC->HasMatchingGameplayTag(Tags->Status_Casting);
+	const bool bTargetAttacking = TargetASC && TargetASC->HasMatchingGameplayTag(Tags->Status_Attacking);
+
 	TArray<FScoredBossAttack> Candidates;
 	FString CandidateLog;
 
-	for (const FMALBossAttackEntry& Entry : AttackSet->Attacks)
+	for (const FMALBossSkillEntry& Entry : Kit->Skills)
 	{
-		if (!Entry.AbilityClass)
+		if (!Entry.AbilityClass || !Entry.bSelectable)
 		{
 			continue;
 		}
@@ -246,12 +276,10 @@ bool UMALBossAttackSelectorComponent::SelectAttack(AActor* Target, FMALBossAttac
 			continue;
 		}
 
-		if (const float* ReadyTime = ReadyTimes.Find(Entry.AbilityClass))
+		// Cooldown is GAS-owned: skip while the ability's own cooldown GE is still running.
+		if (IsSkillOnCooldown(Entry.AbilityClass))
 		{
-			if (*ReadyTime > Now)
-			{
-				continue;
-			}
+			continue;
 		}
 
 		if (GetConsecutiveUses(Entry.AbilityClass) >= FMath::Max(Entry.MaxConsecutive, 1))
@@ -259,79 +287,19 @@ bool UMALBossAttackSelectorComponent::SelectAttack(AActor* Target, FMALBossAttac
 			continue;
 		}
 
-		const float DistanceScore = Entry.bRadial
-			? 1.0f
-			: 1.0f - FMath::Clamp(
-				FMath::Abs(Distance - Entry.PreferredRange) / FMath::Max(Entry.RangeTolerance, 1.0f), 0.0f, 1.0f);
-
-		const float AngleScore = Entry.bRadial
-			? 1.0f
-			: FMath::Clamp(0.5f + 0.5f * FacingDot, 0.0f, 1.0f);
-
-		float StateMultiplier = 1.0f;
-		if (TargetASC)
-		{
-			if (TargetASC->HasMatchingGameplayTag(Tags->Status_Casting))
-			{
-				StateMultiplier *= Entry.CastingMultiplier;
-			}
-			if (TargetASC->HasMatchingGameplayTag(Tags->Status_Attacking))
-			{
-				StateMultiplier *= Entry.AttackingMultiplier;
-			}
-		}
-
-		if (bTargetBehind)
-		{
-			StateMultiplier *= Entry.BehindMultiplier;
-		}
-
-		if (TargetHealthPercent <= Entry.LowHealthThreshold)
-		{
-			StateMultiplier *= Entry.LowHealthMultiplier;
-		}
-
-		// Prevent one situational bonus from fully determining the pick. The Boss should react,
-		// not read the player's inputs.
-		StateMultiplier = FMath::Clamp(StateMultiplier, 0.5f, 2.5f);
-
-		float Readiness = 1.0f;
-		if (const float* ReadyTime = ReadyTimes.Find(Entry.AbilityClass))
-		{
-			if (Now - *ReadyTime < 2.0f)
-			{
-				Readiness = 0.85f;
-			}
-		}
-
-		float RepeatPenalty = 1.0f;
-		if (RecentAttacks.Num() > 0 && RecentAttacks.Last() == Entry.AbilityClass)
-		{
-			RepeatPenalty = 0.2f;
-		}
-		else
-		{
-			const int32 FirstRecent = FMath::Max(0, RecentAttacks.Num() - 2);
-			for (int32 Index = RecentAttacks.Num() - 1; Index >= FirstRecent; --Index)
-			{
-				if (RecentAttacks[Index] == Entry.AbilityClass)
-				{
-					RepeatPenalty = 0.5f;
-					break;
-				}
-			}
-		}
-
-		const float Jitter = FMath::FRandRange(0.92f, 1.08f);
-		const float Score = PhaseWeight * DistanceScore * AngleScore * StateMultiplier * RepeatPenalty * Readiness * Jitter;
+		// Jitter only perturbs the pick; the deterministic part is shared with the debug table.
+		const float Score = ScoreEntry(
+			Entry, Distance, FacingDot, bTargetBehind, TargetHealthPercent,
+			bTargetCasting, bTargetAttacking) * FMath::FRandRange(0.92f, 1.08f);
 
 		FScoredBossAttack& Candidate = Candidates.AddDefaulted_GetRef();
 		Candidate.Entry = Entry;
 		Candidate.Score = Score;
 
+		// ScoreEntry folds the repeat penalty in; log it once so the table and log agree.
 		CandidateLog += FString::Printf(
-			TEXT("\n  %s=%.2f (D=%.2f A=%.2f S=%.2f R=%.2f)"),
-			*Entry.GetDebugName(), Score, DistanceScore, AngleScore, StateMultiplier, RepeatPenalty);
+			TEXT("\n  %s=%.2f (R=%.2f)"),
+			*Entry.GetDebugName(), Score, GetRepeatPenalty(Entry));
 	}
 
 	if (Candidates.Num() == 0)
@@ -395,7 +363,6 @@ bool UMALBossAttackSelectorComponent::ActivateLastSelectedAttack()
 
 	const float Now = World->GetTimeSeconds();
 	ActiveAttackClass = LastSelectedAttack.AbilityClass;
-	ActiveAttackCooldown = FMath::Max(LastSelectedAttack.Cooldown, 0.0f);
 	bAttackInProgress = true;
 	bHasSelection = false;
 
@@ -403,8 +370,8 @@ bool UMALBossAttackSelectorComponent::ActivateLastSelectedAttack()
 	RecentAttacks.Add(ActiveAttackClass);
 	TrimRecentAttacks();
 
-	UE_LOG(LogTemp, Log, TEXT("MALBossSelect %s: activated %s (P%d, cooldown %.1fs)"),
-		*GetNameSafe(GetOwner()), *LastSelectedAttack.GetDebugName(), CurrentPhase, ActiveAttackCooldown);
+	UE_LOG(LogTemp, Log, TEXT("MALBossSelect %s: activated %s (P%d)"),
+		*GetNameSafe(GetOwner()), *LastSelectedAttack.GetDebugName(), CurrentPhase);
 
 	return true;
 }
@@ -418,11 +385,6 @@ void UMALBossAttackSelectorComponent::NotifyAttackEnded()
 
 	UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
-
-	if (ActiveAttackClass)
-	{
-		ReadyTimes.Add(ActiveAttackClass, Now + FMath::Max(ActiveAttackCooldown, 0.0f));
-	}
 
 	bAttackInProgress = false;
 	ActiveAttackClass = nullptr;
@@ -474,12 +436,13 @@ void UMALBossAttackSelectorComponent::NotifyPlayerEvaded()
 
 void UMALBossAttackSelectorComponent::UpdatePhaseState()
 {
-	if (!AttackSet)
+	const UMALBossSkillKit* Kit = GetSkillKit();
+	if (!Kit)
 	{
 		return;
 	}
 
-	const int32 DesiredPhase = AttackSet->GetPhaseForHealthPercent(GetHealthPercent());
+	const int32 DesiredPhase = Kit->GetPhaseForHealthPercent(GetHealthPercent());
 	if (DesiredPhase > CurrentPhase)
 	{
 		PendingPhase = DesiredPhase;
@@ -495,7 +458,8 @@ void UMALBossAttackSelectorComponent::UpdatePhaseState()
 void UMALBossAttackSelectorComponent::StartPhaseTransition(int32 NewPhase)
 {
 	UWorld* World = GetWorld();
-	if (!World || !AttackSet)
+	const UMALBossSkillKit* Kit = GetSkillKit();
+	if (!World || !Kit)
 	{
 		return;
 	}
@@ -505,15 +469,15 @@ void UMALBossAttackSelectorComponent::StartPhaseTransition(int32 NewPhase)
 	bHasSelection = false;
 
 	const float Now = World->GetTimeSeconds();
-	PhaseTransitionEndTime = Now + FMath::Max(AttackSet->PhaseTransitionDuration, 0.0f);
-	NextAttackAllowedTime = PhaseTransitionEndTime + FMath::Max(AttackSet->PhaseTransitionGrace, 0.0f);
+	PhaseTransitionEndTime = Now + FMath::Max(Kit->PhaseTransitionDuration, 0.0f);
+	NextAttackAllowedTime = PhaseTransitionEndTime + FMath::Max(Kit->PhaseTransitionGrace, 0.0f);
 
 	// A new phase starts with a clean cadence budget, but cooldowns intentionally survive.
 	AttackTimes.Reset();
 
 	UE_LOG(LogTemp, Log, TEXT("MALBossSelect %s: phase -> %d (transition %.2fs + grace %.2fs)"),
 		*GetNameSafe(GetOwner()), CurrentPhase,
-		AttackSet->PhaseTransitionDuration, AttackSet->PhaseTransitionGrace);
+		Kit->PhaseTransitionDuration, Kit->PhaseTransitionGrace);
 }
 
 void UMALBossAttackSelectorComponent::TrimRecentAttacks()
@@ -529,4 +493,173 @@ void UMALBossAttackSelectorComponent::WriteDebug(const FString& Text)
 {
 	LastSelectionDebug = Text;
 	UE_LOG(LogTemp, Verbose, TEXT("MALBossSelect %s: %s"), *GetNameSafe(GetOwner()), *Text);
+}
+
+float UMALBossAttackSelectorComponent::GetRepeatPenalty(const FMALBossSkillEntry& Entry) const
+{
+	if (RecentAttacks.Num() > 0 && RecentAttacks.Last() == Entry.AbilityClass)
+	{
+		return 0.2f;
+	}
+
+	const int32 FirstRecent = FMath::Max(0, RecentAttacks.Num() - 2);
+	for (int32 Index = RecentAttacks.Num() - 1; Index >= FirstRecent; --Index)
+	{
+		if (RecentAttacks[Index] == Entry.AbilityClass)
+		{
+			return 0.5f;
+		}
+	}
+
+	return 1.0f;
+}
+
+float UMALBossAttackSelectorComponent::ScoreEntry(
+	const FMALBossSkillEntry& Entry,
+	float Distance,
+	float FacingDot,
+	bool bTargetBehind,
+	float TargetHealthPercent,
+	bool bTargetCasting,
+	bool bTargetAttacking) const
+{
+	const float DistanceScore = Entry.bRadial
+		? 1.0f
+		: 1.0f - FMath::Clamp(
+			FMath::Abs(Distance - Entry.PreferredRange) / FMath::Max(Entry.RangeTolerance, 1.0f), 0.0f, 1.0f);
+
+	const float AngleScore = Entry.bRadial
+		? 1.0f
+		: FMath::Clamp(0.5f + 0.5f * FacingDot, 0.0f, 1.0f);
+
+	float StateMultiplier = 1.0f;
+	if (bTargetCasting)
+	{
+		StateMultiplier *= Entry.CastingMultiplier;
+	}
+	if (bTargetAttacking)
+	{
+		StateMultiplier *= Entry.AttackingMultiplier;
+	}
+	if (bTargetBehind)
+	{
+		StateMultiplier *= Entry.BehindMultiplier;
+	}
+	if (TargetHealthPercent <= Entry.LowHealthThreshold)
+	{
+		StateMultiplier *= Entry.LowHealthMultiplier;
+	}
+
+	// Prevent one situational bonus from fully determining the pick. The Boss should react,
+	// not read the player's inputs.
+	StateMultiplier = FMath::Clamp(StateMultiplier, 0.5f, 2.5f);
+
+	return Entry.GetPhaseWeight(CurrentPhase) * DistanceScore * AngleScore * StateMultiplier
+		* GetRepeatPenalty(Entry);
+}
+
+void UMALBossAttackSelectorComponent::DrawSkillScores()
+{
+#if !UE_BUILD_SHIPPING
+	if (!GEngine)
+	{
+		return;
+	}
+
+	const UMALBossSkillKit* Kit = GetSkillKit();
+	const AActor* Owner = GetOwner();
+	if (!Kit || !Owner)
+	{
+		return;
+	}
+
+	// Current target: focus actor first, then the blackboard key the BT tasks write.
+	AActor* Target = nullptr;
+	if (const APawn* OwnerPawn = Cast<APawn>(Owner))
+	{
+		if (const AAIController* AI = Cast<AAIController>(OwnerPawn->GetController()))
+		{
+			Target = AI->GetFocusActor();
+			if (!Target)
+			{
+				if (const UBlackboardComponent* Blackboard = AI->GetBlackboardComponent())
+				{
+					Target = Cast<AActor>(Blackboard->GetValueAsObject(TEXT("TargetActor")));
+				}
+			}
+		}
+	}
+
+	float Distance = 0.0f;
+	float FacingDot = 1.0f;
+	bool bTargetBehind = false;
+	float TargetHealthPercent = 1.0f;
+	bool bTargetCasting = false;
+	bool bTargetAttacking = false;
+
+	if (Target)
+	{
+		FVector ToTarget = Target->GetActorLocation() - Owner->GetActorLocation();
+		ToTarget.Z = 0.0f;
+		Distance = ToTarget.Size();
+		const FVector Direction = Distance > KINDA_SMALL_NUMBER
+			? ToTarget / Distance
+			: Owner->GetActorForwardVector();
+		FacingDot = FVector::DotProduct(Owner->GetActorForwardVector(), Direction);
+		bTargetBehind = FacingDot < -0.25f;
+
+		if (const AMALCharacterBase* TargetCharacter = Cast<AMALCharacterBase>(Target))
+		{
+			if (const UMALAttributeSet* Attributes = TargetCharacter->GetMALAttributeSet())
+			{
+				if (Attributes->GetMaxHealth() > 0.0f)
+				{
+					TargetHealthPercent = FMath::Clamp(
+						Attributes->GetHealth() / Attributes->GetMaxHealth(), 0.0f, 1.0f);
+				}
+			}
+		}
+
+		if (const UAbilitySystemComponent* TargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Target))
+		{
+			const UMALGameplayTags* Tags = UMALGameplayTags::Get();
+			bTargetCasting = TargetASC->HasMatchingGameplayTag(Tags->Status_Casting);
+			bTargetAttacking = TargetASC->HasMatchingGameplayTag(Tags->Status_Attacking);
+		}
+	}
+
+	// One stable key per kit row: the same key rewrites its own line, so rows never reorder and
+	// the table does not scroll. Index-based, because the kit itself is the fixed row order.
+	static constexpr int32 BaseKey = 0x4D420000;
+	for (int32 Index = 0; Index < Kit->Skills.Num(); ++Index)
+	{
+		const FMALBossSkillEntry& Entry = Kit->Skills[Index];
+		const FString Name = Entry.GetDebugName();
+
+		FString Line;
+		FColor Color = FColor::White;
+		if (!Entry.AbilityClass || !Entry.bSelectable)
+		{
+			// Grant-only rows stay in place so the table shape never changes.
+			Line = FString::Printf(TEXT("%-26s     --"), *Name);
+			Color = FColor(130, 130, 130);
+		}
+		else
+		{
+			const float Score = Target
+				? ScoreEntry(Entry, Distance, FacingDot, bTargetBehind, TargetHealthPercent,
+					bTargetCasting, bTargetAttacking)
+				: 0.0f;
+			Line = FString::Printf(TEXT("%-26s %6.2f"), *Name, Score);
+
+			// Grey while GAS still holds the cooldown; the value itself stays readable.
+			if (IsSkillOnCooldown(Entry.AbilityClass))
+			{
+				Color = FColor(140, 140, 140);
+			}
+		}
+
+		GEngine->AddOnScreenDebugMessage(static_cast<uint64>(BaseKey + Index), 0.25f, Color, Line);
+	}
+#endif
 }

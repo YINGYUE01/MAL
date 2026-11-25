@@ -68,23 +68,83 @@ void UMALGameplayTags::InitializeNativeTags()
 	Ability_Player = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player")), TEXT("Root of player-owned abilities"));
 	Ability_Enemy = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Enemy")), TEXT("Root of enemy-owned abilities"));
 	Ability_Common = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Common")), TEXT("Root of abilities shared by both sides"));
-	Ability_Player_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Attack")), TEXT("Player melee attack"));
-	Ability_Player_Dodge = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Dodge")), TEXT("Player dodge/dash"));
-	Ability_Player_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Buff")), TEXT("Player self-buff"));
+	// Per-weapon attack abilities: MAL.Ability.Player.{Weapon}.Attack1..4
+	Ability_Player_Sword_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Sword.Attack1")), TEXT("Player sword attack 1"));
+	Ability_Player_Sword_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Sword.Attack2")), TEXT("Player sword attack 2"));
+	Ability_Player_Sword_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Sword.Attack3")), TEXT("Player sword attack 3"));
+	Ability_Player_Sword_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Sword.Attack4")), TEXT("Player sword attack 4"));
+
+	Ability_Player_Axe_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Axe.Attack1")), TEXT("Player axe attack 1"));
+	Ability_Player_Axe_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Axe.Attack2")), TEXT("Player axe attack 2"));
+	Ability_Player_Axe_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Axe.Attack3")), TEXT("Player axe attack 3"));
+	Ability_Player_Axe_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Axe.Attack4")), TEXT("Player axe attack 4"));
+
+	Ability_Player_Dagger_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Dagger.Attack1")), TEXT("Player dagger attack 1"));
+	Ability_Player_Dagger_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Dagger.Attack2")), TEXT("Player dagger attack 2"));
+	Ability_Player_Dagger_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Dagger.Attack3")), TEXT("Player dagger attack 3"));
+	Ability_Player_Dagger_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Dagger.Attack4")), TEXT("Player dagger attack 4"));
+
+	Ability_Player_Hammer_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Hammer.Attack1")), TEXT("Player hammer attack 1"));
+	Ability_Player_Hammer_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Hammer.Attack2")), TEXT("Player hammer attack 2"));
+	Ability_Player_Hammer_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Hammer.Attack3")), TEXT("Player hammer attack 3"));
+	Ability_Player_Hammer_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Hammer.Attack4")), TEXT("Player hammer attack 4"));
+
+	Ability_Player_Scythe_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Scythe.Attack1")), TEXT("Player scythe attack 1"));
+	Ability_Player_Scythe_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Scythe.Attack2")), TEXT("Player scythe attack 2"));
+	Ability_Player_Scythe_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Scythe.Attack3")), TEXT("Player scythe attack 3"));
+	Ability_Player_Scythe_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Scythe.Attack4")), TEXT("Player scythe attack 4"));
+
+	Ability_Player_Spear_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Spear.Attack1")), TEXT("Player spear attack 1"));
+	Ability_Player_Spear_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Spear.Attack2")), TEXT("Player spear attack 2"));
+	Ability_Player_Spear_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Spear.Attack3")), TEXT("Player spear attack 3"));
+	Ability_Player_Spear_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Spear.Attack4")), TEXT("Player spear attack 4"));
+
+	Ability_Player_Bow_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Bow.Attack1")), TEXT("Player bow attack 1"));
+	Ability_Player_Bow_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Bow.Attack2")), TEXT("Player bow attack 2"));
+	Ability_Player_Bow_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Bow.Attack3")), TEXT("Player bow attack 3"));
+	Ability_Player_Bow_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Player.Bow.Attack4")), TEXT("Player bow attack 4"));
 	Ability_Enemy_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Enemy.Attack")), TEXT("Enemy melee attack"));
 	Ability_Common_HitReact = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Ability.Common.HitReact")), TEXT("Hit reaction shared by all characters"));
-
-	// Cooldown Tags
-	Cooldown_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Attack")), TEXT("Attack is on cooldown (legacy flat tag)"));
-	Cooldown_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Buff")), TEXT("Self-buff is on cooldown (legacy flat tag)"));
-
+	
 	// Cooldown ownership hierarchy, mirroring the ability tags.
 	Cooldown_Player = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player")), TEXT("Root of player cooldowns"));
 	Cooldown_Enemy = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Enemy")), TEXT("Root of enemy cooldowns"));
-	Cooldown_Player_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Attack")), TEXT("Player attack cooldown"));
-	Cooldown_Player_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Buff")), TEXT("Player buff cooldown"));
-	Cooldown_Player_Combo2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Combo2")), TEXT("Player combo II cooldown"));
-	Cooldown_Player_Whirlwind = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Whirlwind")), TEXT("Player whirlwind cooldown"));
+
+	// Per-weapon attack cooldowns: MAL.Cooldown.Player.{Weapon}.Attack1..4
+	Cooldown_Player_Sword_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Sword.Attack1")), TEXT("Player sword attack 1 cooldown"));
+	Cooldown_Player_Sword_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Sword.Attack2")), TEXT("Player sword attack 2 cooldown"));
+	Cooldown_Player_Sword_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Sword.Attack3")), TEXT("Player sword attack 3 cooldown"));
+	Cooldown_Player_Sword_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Sword.Attack4")), TEXT("Player sword attack 4 cooldown"));
+
+	Cooldown_Player_Axe_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Axe.Attack1")), TEXT("Player axe attack 1 cooldown"));
+	Cooldown_Player_Axe_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Axe.Attack2")), TEXT("Player axe attack 2 cooldown"));
+	Cooldown_Player_Axe_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Axe.Attack3")), TEXT("Player axe attack 3 cooldown"));
+	Cooldown_Player_Axe_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Axe.Attack4")), TEXT("Player axe attack 4 cooldown"));
+
+	Cooldown_Player_Dagger_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Dagger.Attack1")), TEXT("Player dagger attack 1 cooldown"));
+	Cooldown_Player_Dagger_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Dagger.Attack2")), TEXT("Player dagger attack 2 cooldown"));
+	Cooldown_Player_Dagger_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Dagger.Attack3")), TEXT("Player dagger attack 3 cooldown"));
+	Cooldown_Player_Dagger_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Dagger.Attack4")), TEXT("Player dagger attack 4 cooldown"));
+
+	Cooldown_Player_Hammer_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Hammer.Attack1")), TEXT("Player hammer attack 1 cooldown"));
+	Cooldown_Player_Hammer_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Hammer.Attack2")), TEXT("Player hammer attack 2 cooldown"));
+	Cooldown_Player_Hammer_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Hammer.Attack3")), TEXT("Player hammer attack 3 cooldown"));
+	Cooldown_Player_Hammer_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Hammer.Attack4")), TEXT("Player hammer attack 4 cooldown"));
+
+	Cooldown_Player_Scythe_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Scythe.Attack1")), TEXT("Player scythe attack 1 cooldown"));
+	Cooldown_Player_Scythe_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Scythe.Attack2")), TEXT("Player scythe attack 2 cooldown"));
+	Cooldown_Player_Scythe_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Scythe.Attack3")), TEXT("Player scythe attack 3 cooldown"));
+	Cooldown_Player_Scythe_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Scythe.Attack4")), TEXT("Player scythe attack 4 cooldown"));
+
+	Cooldown_Player_Spear_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Spear.Attack1")), TEXT("Player spear attack 1 cooldown"));
+	Cooldown_Player_Spear_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Spear.Attack2")), TEXT("Player spear attack 2 cooldown"));
+	Cooldown_Player_Spear_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Spear.Attack3")), TEXT("Player spear attack 3 cooldown"));
+	Cooldown_Player_Spear_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Spear.Attack4")), TEXT("Player spear attack 4 cooldown"));
+
+	Cooldown_Player_Bow_Attack1 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Bow.Attack1")), TEXT("Player bow attack 1 cooldown"));
+	Cooldown_Player_Bow_Attack2 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Bow.Attack2")), TEXT("Player bow attack 2 cooldown"));
+	Cooldown_Player_Bow_Attack3 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Bow.Attack3")), TEXT("Player bow attack 3 cooldown"));
+	Cooldown_Player_Bow_Attack4 = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Player.Bow.Attack4")), TEXT("Player bow attack 4 cooldown"));
 	Cooldown_Enemy_Attack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Cooldown.Enemy.Attack")), TEXT("Enemy attack cooldown"));
 
 
@@ -94,6 +154,7 @@ void UMALGameplayTags::InitializeNativeTags()
 	Input_Movement_Look = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Movement.Look")), TEXT("Look input"));
 	Input_Movement_Jump = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Movement.Jump")), TEXT("Jump input"));
 	Input_Attack_LMB = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Attack.LMB")), TEXT("LMB input (legacy flat tag)"));
+	Input_Attack_Q = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Attack.Q")), TEXT("Q input"));
 	//Input_PrimaryAttack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.PrimaryAttack")), TEXT("Primary attack action"));
 	//Input_SecondaryAttack = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.SecondaryAttack")), TEXT("Secondary/heavy attack action"));
 	//Input_Skill = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Skill")), TEXT("Extra skill action"));
@@ -101,7 +162,6 @@ void UMALGameplayTags::InitializeNativeTags()
 	//Input_Defend = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Defend")), TEXT("Defend input"));
 	//Input_Dash = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Dash")), TEXT("Dash input"));
 	Input_LockOn = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.LockOn")), TEXT("Lock-on toggle"));
-	Input_Attack_Buff = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.Attack.Buff")), TEXT("Buff input"));
 	Input_HUD_AttributeMenu = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.HUD.AttributeMenu")), TEXT("Opens or closes the attribute menu; not an ability input"));
 	Input_HUD_SkillMenu = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.HUD.SkillMenu")), TEXT("Opens or closes the skill tree menu; not an ability input"));
 	Input_WeaponNext = TagManager.AddNativeGameplayTag(FName(TEXT("MAL.Input.WeaponNext")), TEXT("Swaps to the next weapon in the loadout; not an ability input"));

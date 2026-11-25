@@ -10,7 +10,7 @@
 
 class UMALWorldWidgetComponent;
 class UMALBossAttackSelectorComponent;
-class UMALBossAttackSet;
+class UMALBossSkillKit;
 class UGameplayAbility;
 
 /**
@@ -37,13 +37,29 @@ public:
 	TObjectPtr<UMALWorldWidgetComponent> HealthBarWidget;
 
 	/**
-	 * Optional Boss move set. Leave empty on regular enemies; the selector component is inert
-	 * without it, so every enemy can share one character class.
+	 * Boss skill kit: the single source of the Boss's skills.
+	 *
+	 * Assigning it makes this enemy a Boss: every kit entry is granted on the server and the
+	 * selector scores the selectable ones. Leave it empty on regular enemies - they grant
+	 * InitialAbilities instead and the selector stays inert.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss")
-	TObjectPtr<UMALBossAttackSet> BossAttackSet;
+	TObjectPtr<UMALBossSkillKit> BossSkillKit;
 
-	/** Server-side Boss attack selector; only active when BossAttackSet is assigned. */
+	/** Name shown on the top-screen Boss bar; falls back to "Boss" when unset. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss|Bar")
+	FText BossDisplayName;
+
+	/**
+	 * Radius around a player inside which this Boss shows a top-screen bar, in centimetres.
+	 *
+	 * Visibility is computed per player on the server and pushed through Client RPCs; clients
+	 * never infer it from replicated state. Zero disables the bar.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss|Bar", meta = (ClampMin = "0.0"))
+	float BossBarActivationRadius = 1500.0f;
+
+	/** Server-side Boss attack selector; only active when BossSkillKit is assigned. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MAL|Boss")
 	TObjectPtr<UMALBossAttackSelectorComponent> BossAttackSelector;
 

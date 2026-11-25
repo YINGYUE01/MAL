@@ -75,21 +75,20 @@ void UMALAbility_HitReact::ActivateAbility(
 	// montage task alive under the flinch, and whichever montage lost the slot could leave its
 	// owned status tag behind. Cancel by ability identity instead.
 	
-	if (UMALAbilitySystemComponent* AbilitySystem = Character->GetMALAbilitySystemComponent())
-	{
-		const UMALGameplayTags* Tags = UMALGameplayTags::Get();
-
-		FGameplayTagContainer CancelTags;
-		CancelTags.AddTag(Tags->Ability_Player_Attack);
-		CancelTags.AddTag(Tags->Ability_Player_Buff);
-		CancelTags.AddTag(Tags->Ability_Enemy_Attack);
-
-		// Legacy flat tags: assets that have not been migrated to the ownership hierarchy yet.
-		// CancelTags.AddTag(Tags->Ability_Attack);
-		// CancelTags.AddTag(Tags->Ability_Buff);
-
-		AbilitySystem->CancelAbilities(&CancelTags, /*WithoutTags*/ nullptr, /*Ignore*/ this);
-	}
+	// if (UMALAbilitySystemComponent* AbilitySystem = Character->GetMALAbilitySystemComponent())
+	// {
+	// 	const UMALGameplayTags* Tags = UMALGameplayTags::Get();
+	//
+	// 	FGameplayTagContainer CancelTags;
+	// 	CancelTags.AddTag(Tags->Ability_Player);
+	// 	CancelTags.AddTag(Tags->Ability_Enemy_Attack);
+	//
+	// 	// Legacy flat tags: assets that have not been migrated to the ownership hierarchy yet.
+	// 	// CancelTags.AddTag(Tags->Ability_Attack);
+	// 	// CancelTags.AddTag(Tags->Ability_Buff);
+	//
+	// 	AbilitySystem->CancelAbilities(&CancelTags, /*WithoutTags*/ nullptr, /*Ignore*/ this);
+	// }
 
 	// GetAbilityMontage returns the character's montage; the base task handles replication,
 	// blend-out and ending the ability when the animation finishes.
