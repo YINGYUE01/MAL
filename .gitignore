@@ -35,3 +35,6 @@ Scripts/.iconcache/
 # ---- 其他 ----
 __pycache__/
 *.pyc
+
+# ---- 第三方工具插件（仅本机使用，不入仓库）----
+Plugins/blueprint-auto-layout/
