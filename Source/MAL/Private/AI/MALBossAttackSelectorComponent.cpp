@@ -319,16 +319,39 @@ bool UMALBossAttackSelectorComponent::SelectAttack(AActor* Target, FMALBossSkill
 	const int32 TopCount = FMath::Clamp(TopCandidateCount, 1, Candidates.Num());
 	if (TopCount > 1)
 	{
-		// Uniform over the top N: a slightly worse attack is still a valid choice, which keeps
-		// the Boss from settling into the same optimal move every cycle.
-		ChosenIndex = FMath::RandRange(0, TopCount - 1);
+		// Weighted over the top N: the chance of each entry is proportional to its score, so the
+		// strongest option dominates while a weaker one still has a real chance. All-zero scores
+		// fall back to a uniform pick instead of dividing by zero.
+		float TotalScore = 0.0f;
+		for (int32 Index = 0; Index < TopCount; ++Index)
+		{
+			TotalScore += FMath::Max(Candidates[Index].Score, 0.0f);
+		}
+
+		if (TotalScore > KINDA_SMALL_NUMBER)
+		{
+			float Roll = FMath::FRandRange(0.0f, TotalScore);
+			for (int32 Index = 0; Index < TopCount; ++Index)
+			{
+				Roll -= FMath::Max(Candidates[Index].Score, 0.0f);
+				if (Roll <= 0.0f)
+				{
+					ChosenIndex = Index;
+					break;
+				}
+			}
+		}
+		else
+		{
+			ChosenIndex = FMath::RandRange(0, TopCount - 1);
+		}
 	}
 
 	LastSelectedAttack = Candidates[ChosenIndex].Entry;
 	bHasSelection = true;
 
 	LastSelectionDebug = FString::Printf(
-		TEXT("P%d dist=%.0f target=%s%s\nChosen: %s (%.2f, top-%d random)"),
+		TEXT("P%d dist=%.0f target=%s%s\nChosen: %s (%.2f, top-%d weighted)"),
 		CurrentPhase, Distance, *GetNameSafe(Target),
 		*CandidateLog, *LastSelectedAttack.GetDebugName(), Candidates[ChosenIndex].Score, TopCount);
 

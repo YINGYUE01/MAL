@@ -57,7 +57,8 @@ public:
 
 	/**
 	 * Number of highest-scoring attacks the final pick is drawn from.
-	 * The winner is uniform among these, so close scores produce real variation.
+	 * Inside this window the pick is weighted by score, so the strongest option is favoured while
+	 * weaker ones keep a real chance; close scores still produce visible variation.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MAL|Boss|Selection", meta = (ClampMin = "1", ClampMax = "4"))
 	int32 TopCandidateCount = 3;
